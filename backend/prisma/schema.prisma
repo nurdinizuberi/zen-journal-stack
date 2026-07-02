@@ -1,0 +1,98 @@
+// backend/prisma/schema.prisma
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id        String         @id @default(cuid())
+  email     String         @unique
+  password  String
+  name      String
+  entries       JournalEntry[]
+  todos         Todo[]
+  goals         Goal[]
+  habit         Habit[]
+  readingBooks  ReadingBook[]
+  createdAt     DateTime       @default(now())
+}
+
+model JournalEntry {
+  id              String   @id @default(uuid())
+  title           String
+  content         String
+  mood            String
+  createdAt       DateTime @default(now())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Ensure these are exact lowercase characters
+  voiceTranscript String?  @default("")
+  attachments     Json?
+}
+
+model Todo {
+  id          String   @id @default(uuid())
+  task        String
+  isCompleted Boolean  @default(false)
+  timeSpent   Int      @default(0) // in minutes
+  dueDate     DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Goal {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  timeframe   String // "daily", "weekly", "monthly", "yearly"
+  isCompleted Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ReadingBook {
+  id          String   @id @default(uuid())
+  title       String
+  author      String
+  totalPages  Int
+  currentPage Int      @default(0)
+  notes       String   @default("")
+  completed   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Habit {
+  id           String     @id @default(uuid())
+  name         String
+  description  String?
+  streakCount  Int        @default(0)
+  createdAt    DateTime   @default(now())
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  logs         HabitLog[]
+
+  @@index([userId])
+}
+
+model HabitLog {
+  id        String   @id @default(uuid())
+  completedAt DateTime // Standardized to YYYY-MM-DD at midnight for precise grid alignment
+  habitId   String
+  habit     Habit    @relation(fields: [habitId], references: [id], onDelete: Cascade)
+
+  @@unique([habitId, completedAt]) // Prevents double logging completion for the same habit on the same day
+}

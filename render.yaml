@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: zen-journal-backend
+    env: node
+    region: oregon
+    plan: free
+    rootDir: zen-journal-stack/backend
+    buildCommand: "npm install && npx prisma generate && npx prisma migrate deploy"
+    startCommand: "npm start"
+    disk:
+      name: zen-journal-data
+      mountPath: /var/lib/render/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        value: file:/var/lib/render/data/dev.db
+      - key: CORS_ORIGIN
+        value: https://YOUR-VERCEL-APP.vercel.app
+      - key: PUBLIC_BASE_URL
+        value: https://YOUR-RENDER-SERVICE.onrender.com
+      - key: GEMINI_API_KEY
+        sync: false
