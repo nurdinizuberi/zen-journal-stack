@@ -31,7 +31,18 @@ const __dirname = path.dirname(__filename);
 // ==========================================
 // MIDDLEWARES & MULTER STORAGE (PILLAR 2)
 // ==========================================
-app.use(cors({ origin: [FRONTEND_ORIGIN, 'http://localhost:3002', 'https://zen-journal-stack.vercel.app'], credentials: true }));
+
+const allowedOrigins = [
+  FRONTEND_ORIGIN, 
+  'http://localhost:3002', 
+  'http://127.0.0.1:3002', 
+  'https://zen-journal-stack.vercel.app'
+];
+
+app.use(cors({ 
+  origin: allowedOrigins, 
+  credentials: true 
+}));
 app.use(express.json());
 app.use('/api/habits', habitRoutes);
 
