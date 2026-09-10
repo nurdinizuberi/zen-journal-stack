@@ -7,10 +7,6 @@ services:
     rootDir: zen-journal-stack/backend
     buildCommand: "npm install && npx prisma generate"
     startCommand: "npm start"
-    disk:
-      name: zen-journal-data
-      mountPath: /var/lib/render/data
-      sizeGB: 1
     envVars:
       - key: NODE_ENV
         value: production
@@ -19,10 +15,10 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: DATABASE_URL
-        value: file:/var/lib/render/data/dev.db
+        value: postgresql://USER:PASSWORD@HOST:5432/DB_NAME?sslmode=require
       - key: CORS_ORIGIN
-        value: https://YOUR-VERCEL-APP.vercel.app
+        value: https://zen-journal-stack.vercel.app
       - key: PUBLIC_BASE_URL
-        value: https://YOUR-RENDER-SERVICE.onrender.com
+        value: https://zen-journal-stack.onrender.com
       - key: GEMINI_API_KEY
         sync: false
