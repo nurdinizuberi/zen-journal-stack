@@ -26,25 +26,31 @@ A full-stack journaling and productivity application with AI-powered insights, h
 - Node.js 18+ installed
 - npm or yarn package manager
 
-### Backend Setup
+### One-Command Setup (Both Servers)
 
 ```bash
-cd zen-journal-stack/backend
+cd zen-journal-stack
 npm install
 npm run dev
 ```
 
-The backend will start at `http://localhost:5000`
+This starts both servers together:
+- Backend: `http://localhost:5000`
+- Frontend: `http://localhost:3002`
 
-### Frontend Setup
+### Individual Servers (Optional)
 
 ```bash
+# Backend only
+cd zen-journal-stack/backend
+npm install
+npm run dev
+
+# Frontend only
 cd zen-journal-stack/frontend
 npm install
 npm run dev
 ```
-
-The frontend will start at `http://localhost:3002`
 
 ### Environment Variables
 
@@ -121,6 +127,10 @@ JOURNAL-APP/
 ```
 
 ## 🔧 Available Scripts
+
+### Root (runs both servers)
+
+- `npm run dev` - Start backend and frontend together (concurrently)
 
 ### Backend
 
