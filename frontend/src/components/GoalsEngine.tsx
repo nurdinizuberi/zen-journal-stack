@@ -1,5 +1,6 @@
 'use client';
 import React, { useState, useEffect } from 'react';
+import { getApiBaseUrl } from '@/lib/api';
 
 interface Goal {
   id: string;
@@ -16,6 +17,8 @@ export default function GoalsEngine() {
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('zen_token') : null;
 
+  const API_BASE = getApiBaseUrl();
+
   useEffect(() => {
     fetchGoals();
   }, []);
@@ -23,7 +26,7 @@ export default function GoalsEngine() {
   const fetchGoals = async () => {
     if (!token) return;
     try {
-      const res = await fetch('http://localhost:5000/api/goals', {
+      const res = await fetch(`${API_BASE}/goals`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
@@ -41,7 +44,7 @@ export default function GoalsEngine() {
 
     setIsLoading(true);
     try {
-      const res = await fetch('http://localhost:5000/api/goals', {
+      const res = await fetch(`${API_BASE}/goals`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -65,7 +68,7 @@ export default function GoalsEngine() {
   const toggleGoal = async (id: string, currentStatus: boolean) => {
     if (!token) return;
     try {
-      const res = await fetch(`http://localhost:5000/api/goals/${id}`, {
+      const res = await fetch(`${API_BASE}/goals/${id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -85,7 +88,7 @@ export default function GoalsEngine() {
   const deleteGoal = async (id: string) => {
     if (!token) return;
     try {
-      const res = await fetch(`http://localhost:5000/api/goals/${id}`, {
+      const res = await fetch(`${API_BASE}/goals/${id}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });

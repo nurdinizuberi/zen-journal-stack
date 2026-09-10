@@ -2,6 +2,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { getApiBaseUrl } from '@/lib/api';
 
 interface HabitLog {
   id: string;
@@ -24,6 +25,8 @@ export default function HabitMatrix() {
   // Dynamic temporal references for a standard 30-day view baseline
   const [daysInView, setDaysInView] = useState<string[]>([]);
 
+  const API_BASE = getApiBaseUrl();
+
   useEffect(() => {
     fetchHabits();
     generatePastMonthDays();
@@ -44,7 +47,7 @@ export default function HabitMatrix() {
     if (!token) return;
 
     try {
-      const res = await fetch('http://localhost:5000/api/habits', {
+      const res = await fetch(`${API_BASE}/habits`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
@@ -64,7 +67,7 @@ export default function HabitMatrix() {
     if (!token) return;
 
     try {
-      const res = await fetch('http://localhost:5000/api/habits', {
+      const res = await fetch(`${API_BASE}/habits`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -88,7 +91,7 @@ export default function HabitMatrix() {
     if (!token) return;
 
     try {
-      const res = await fetch(`http://localhost:5000/api/habits/${habitId}/toggle`, {
+      const res = await fetch(`${API_BASE}/habits/${habitId}/toggle`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
