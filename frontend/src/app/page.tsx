@@ -11,6 +11,11 @@ import { getApiBaseUrl } from '@/lib/api';
 import { loadLocal, saveLocal, makeId } from '@/lib/localStore';
 import { getDailyFuel, FuelQuote } from '@/utils/morningFuel';
 
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
+}
+
 interface JournalEntry {
   id: string;
   title: string;
@@ -64,6 +69,9 @@ export default function Home() {
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [authName, setAuthName] = useState('');
+  const [authLoading, setAuthLoading] = useState(false);
+
+  const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
 
   const [activeTab, setActiveTab] = useState<'journal' | 'todos' | 'goals' | 'reading' | 'productivity'>('journal');
   const [timeRange, setTimeRange] = useState<'all' | 'week' | 'month'>('all');
@@ -108,6 +116,13 @@ export default function Home() {
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch(() => {});
     }
+
+    const installHandler = (e: Event) => {
+      e.preventDefault();
+      setDeferredInstallPrompt(e as BeforeInstallPromptEvent);
+    };
+    window.addEventListener('beforeinstallprompt', installHandler);
+    return () => window.removeEventListener('beforeinstallprompt', installHandler);
   }, []);
 
   useEffect(() => {
@@ -163,8 +178,16 @@ export default function Home() {
     };
   };
 
+  const handleInstall = async () => {
+    if (!deferredInstallPrompt) return;
+    await deferredInstallPrompt.prompt();
+    const { outcome } = await deferredInstallPrompt.userChoice;
+    if (outcome === 'accepted') setDeferredInstallPrompt(null);
+  };
+
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
+    setAuthLoading(true);
     const endpoint = isLoginView ? '/auth/login' : '/auth/signup';
     const body = isLoginView ? { email: authEmail, password: authPassword } : { email: authEmail, password: authPassword, name: authName };
 
@@ -175,7 +198,11 @@ export default function Home() {
         body: JSON.stringify(body),
       });
       const data = await res.json();
-      if (!res.ok) return alert(data.error || 'Authentication failed');
+      if (!res.ok) {
+        alert(data.error || 'Authentication failed');
+        setAuthLoading(false);
+        return;
+      }
 
       const syncOnSignup = !isLoginView;
       localStorage.setItem('zen_token', data.token);
@@ -187,6 +214,7 @@ export default function Home() {
       setAuthEmail('');
       setAuthPassword('');
       setAuthName('');
+      setAuthLoading(false);
 
       if (syncOnSignup) {
         syncGuestData(data.token);
@@ -194,6 +222,8 @@ export default function Home() {
       }
     } catch (err) {
       console.error(err);
+      alert('Network error — the server may be waking up. Please try again in a moment.');
+      setAuthLoading(false);
     }
   };
 
@@ -494,6 +524,9 @@ export default function Home() {
               <span className="font-black text-xl tracking-tight">ZenJournal Suite</span>
             </div>
             <div className="flex items-center gap-2 md:hidden">
+              {deferredInstallPrompt && (
+                <button onClick={handleInstall} className="text-xs font-bold text-emerald-600 dark:text-emerald-400">📲</button>
+              )}
               {isGuest ? (
                 <button onClick={() => setAuthOpen(true)} className="text-xs font-bold text-emerald-600">Sign in</button>
               ) : (
@@ -524,6 +557,11 @@ export default function Home() {
             <button onClick={handleExport} title="Export all data as JSON" className="text-xs font-bold text-slate-400 hover:text-slate-900 dark:hover:text-white transition">
               ⬇ Export
             </button>
+            {deferredInstallPrompt && (
+              <button onClick={handleInstall} title="Install ZenJournal as an app" className="text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:text-emerald-500 transition">
+                📲 Install
+              </button>
+            )}
             {isGuest ? (
               <button onClick={() => setAuthOpen(true)} className="text-xs bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3 py-1.5 rounded-full transition">
                 Sign up to sync
@@ -681,8 +719,15 @@ export default function Home() {
                 <label className="text-xs font-bold uppercase text-slate-400 tracking-wider">Password</label>
                 <input type="password" required value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} className="w-full mt-1 px-4 py-2.5 border rounded-xl focus:ring-2 focus:ring-slate-900 outline-none text-sm" placeholder="••••••••" />
               </div>
-              <button type="submit" className="w-full bg-slate-900 dark:bg-slate-100 dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-white text-white font-medium py-3 rounded-xl transition text-sm shadow-sm mt-2">
-                {isLoginView ? 'Sign In to Hub' : 'Create Account'}
+              <button type="submit" disabled={authLoading} className="w-full bg-slate-900 dark:bg-slate-100 dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-white text-white font-medium py-3 rounded-xl transition text-sm shadow-sm mt-2 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                {authLoading ? (
+                  <>
+                    <span className="h-4 w-4 border-2 border-white/30 border-t-white dark:border-slate-900/30 dark:border-t-slate-900 rounded-full animate-spin" />
+                    {isLoginView ? 'Signing in...' : 'Creating account...'}
+                  </>
+                ) : (
+                  isLoginView ? 'Sign In to Hub' : 'Create Account'
+                )}
               </button>
             </form>
 
