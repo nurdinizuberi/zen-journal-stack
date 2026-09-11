@@ -3,6 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import { getApiBaseUrl } from '@/lib/api';
+import { loadLocal, saveLocal, makeId } from '@/lib/localStore';
 
 interface HabitLog {
   id: string;
@@ -44,7 +45,10 @@ export default function HabitMatrix() {
 
   const fetchHabits = async () => {
     const token = localStorage.getItem('zen_token');
-    if (!token) return;
+    if (!token) {
+      setHabits(loadLocal<Habit[]>('zen_habits', []));
+      return;
+    }
 
     try {
       const res = await fetch(`${API_BASE}/habits`, {
@@ -64,7 +68,21 @@ export default function HabitMatrix() {
     if (!newHabitName.trim()) return;
 
     const token = localStorage.getItem('zen_token');
-    if (!token) return;
+    if (!token) {
+      const newHabit: Habit = {
+        id: makeId(),
+        name: newHabitName.trim(),
+        description: newHabitDesc.trim() || null,
+        streakCount: 0,
+        logs: [],
+      };
+      const next = [newHabit, ...loadLocal<Habit[]>('zen_habits', [])];
+      saveLocal('zen_habits', next);
+      setHabits(next);
+      setNewHabitName('');
+      setNewHabitDesc('');
+      return;
+    }
 
     try {
       const res = await fetch(`${API_BASE}/habits`, {
@@ -88,7 +106,30 @@ export default function HabitMatrix() {
 
   const toggleDayCompletion = async (habitId: string, dateStr: string) => {
     const token = localStorage.getItem('zen_token');
-    if (!token) return;
+    if (!token) {
+      const next = loadLocal<Habit[]>('zen_habits', []).map((habit) => {
+        if (habit.id !== habitId) return habit;
+        const alreadyCompleted = habit.logs.some((log) => log.completedAt.startsWith(dateStr));
+        const logs = alreadyCompleted
+          ? habit.logs.filter((log) => !log.completedAt.startsWith(dateStr))
+          : [...habit.logs, { id: makeId(), completedAt: `${dateStr}T12:00:00.000Z` }];
+
+        const recentDates = new Set<string>();
+        for (let i = 29; i >= 0; i--) {
+          const d = new Date();
+          d.setDate(d.getDate() - i);
+          recentDates.add(d.toISOString().split('T')[0]);
+        }
+        const streakCount = new Set(
+          logs.map((log) => log.completedAt.split('T')[0]).filter((day) => recentDates.has(day))
+        ).size;
+
+        return { ...habit, logs, streakCount };
+      });
+      saveLocal('zen_habits', next);
+      setHabits(next);
+      return;
+    }
 
     try {
       const res = await fetch(`${API_BASE}/habits/${habitId}/toggle`, {

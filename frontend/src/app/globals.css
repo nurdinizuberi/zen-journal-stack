@@ -1,8 +1,16 @@
 /* src/app/globals.css */
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
 
 body {
   background-color: #f8fafc; /* A soft slate-50 background */
   color: #0f172a;            /* Dark slate text */
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.dark body,
+html.dark body {
+  background-color: #020617;
+  color: #e2e8f0;
 }

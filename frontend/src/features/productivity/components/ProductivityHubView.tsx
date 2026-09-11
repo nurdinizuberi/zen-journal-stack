@@ -41,6 +41,7 @@ interface ProductivityHubViewProps {
   timeRange: 'all' | 'week' | 'month';
   calendarCells: CalendarCell[];
   dailyFuelFocusTag?: string;
+  isGuest?: boolean;
   onTimeRangeChange: (value: 'all' | 'week' | 'month') => void;
   onRefreshAiReport: () => void;
 }
@@ -53,6 +54,7 @@ export default function ProductivityHubView({
   timeRange,
   calendarCells,
   dailyFuelFocusTag,
+  isGuest,
   onTimeRangeChange,
   onRefreshAiReport,
 }: ProductivityHubViewProps) {
@@ -97,7 +99,7 @@ export default function ProductivityHubView({
         </div>
       ) : (
         <>
-          <div className="flex justify-end gap-2 bg-white p-1.5 rounded-xl border max-w-xs ml-auto shadow-sm">
+          <div className="flex justify-end gap-2 bg-white dark:bg-slate-900 p-1.5 rounded-xl border border-slate-200 dark:border-slate-800 max-w-xs ml-auto shadow-sm">
             {(['all', 'week', 'month'] as const).map((range) => (
               <button
                 key={range}
@@ -112,21 +114,21 @@ export default function ProductivityHubView({
           </div>
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
+            <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm">
               <span className="text-xs font-bold uppercase text-slate-400 tracking-wider block">Total Tracked</span>
-              <p className="text-2xl sm:text-3xl font-black text-slate-900 mt-1">{analytics.summary.totalTasksCreated}</p>
+              <p className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white mt-1">{analytics.summary.totalTasksCreated}</p>
             </div>
-            <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
+            <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm">
               <span className="text-xs font-bold uppercase text-slate-400 tracking-wider block">Completed</span>
-              <p className="text-2xl sm:text-3xl font-black text-emerald-600 mt-1">{analytics.summary.completedTasks}</p>
+              <p className="text-2xl sm:text-3xl font-black text-emerald-600 dark:text-emerald-400 mt-1">{analytics.summary.completedTasks}</p>
             </div>
-            <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
+            <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm">
               <span className="text-xs font-bold uppercase text-slate-400 tracking-wider block">Success Yield</span>
-              <p className="text-2xl sm:text-3xl font-black text-blue-600 mt-1">{analytics.summary.completionRate}</p>
+              <p className="text-2xl sm:text-3xl font-black text-blue-600 dark:text-blue-400 mt-1">{analytics.summary.completionRate}</p>
             </div>
-            <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
+            <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm">
               <span className="text-xs font-bold uppercase text-slate-400 tracking-wider block">Hours Logged</span>
-              <p className="text-2xl sm:text-3xl font-black text-purple-600 mt-1">{analytics.summary.hoursDedicated}h</p>
+              <p className="text-2xl sm:text-3xl font-black text-purple-600 dark:text-purple-400 mt-1">{analytics.summary.hoursDedicated}h</p>
             </div>
           </div>
 
@@ -260,35 +262,41 @@ export default function ProductivityHubView({
                 </div>
               </div>
 
-              <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-between">
+              <div className="bg-white dark:bg-slate-900 p-5 sm:p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col justify-between">
                 <div>
-                  <h4 className="text-md font-bold text-slate-800 mb-2 flex items-center gap-2">
+                  <h4 className="text-md font-bold text-slate-800 dark:text-slate-100 mb-2 flex items-center gap-2">
                     <span>✨</span> AI Companion Mindset Insight
                   </h4>
                   {isAiLoading ? (
                     <div className="space-y-2 py-4">
-                      <div className="h-3 bg-slate-100 rounded animate-pulse w-full" />
-                      <div className="h-3 bg-slate-100 rounded animate-pulse w-5/6" />
-                      <div className="h-3 bg-slate-100 rounded animate-pulse w-4/5" />
+                      <div className="h-3 bg-slate-100 dark:bg-slate-800 rounded animate-pulse w-full" />
+                      <div className="h-3 bg-slate-100 dark:bg-slate-800 rounded animate-pulse w-5/6" />
+                      <div className="h-3 bg-slate-100 dark:bg-slate-800 rounded animate-pulse w-4/5" />
                     </div>
                   ) : (
-                    <p className="text-sm text-slate-600 leading-relaxed italic whitespace-pre-wrap">"{aiReport}"</p>
+                    <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed italic whitespace-pre-wrap">"{aiReport}"</p>
                   )}
                 </div>
-                <div className="p-3.5 bg-emerald-50 rounded-xl border border-emerald-100 text-xs text-emerald-800 font-medium mt-6 flex items-center justify-between">
-                  <span>💡 Powered by Gemini 2.5 Flash (Free Tier)</span>
-                  {!isAiLoading && (
-                    <button onClick={onRefreshAiReport} className="text-emerald-700 hover:underline font-bold">
-                      Refresh 🔄
-                    </button>
-                  )}
-                </div>
+                {isGuest ? (
+                  <div className="p-3.5 bg-slate-900 dark:bg-slate-800 rounded-xl text-xs text-slate-300 font-medium mt-6 text-center">
+                    Sign up for free to unlock AI-powered habit insights
+                  </div>
+                ) : (
+                  <div className="p-3.5 bg-emerald-50 dark:bg-emerald-500/10 rounded-xl border border-emerald-100 dark:border-emerald-500/20 text-xs text-emerald-800 dark:text-emerald-300 font-medium mt-6 flex items-center justify-between">
+                    <span>💡 Powered by Gemini 2.5 Flash (Free Tier)</span>
+                    {!isAiLoading && (
+                      <button onClick={onRefreshAiReport} className="text-emerald-700 dark:text-emerald-400 hover:underline font-bold">
+                        Refresh 🔄
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>
 
           <div className="space-y-6">
-            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 sm:p-6">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm p-5 sm:p-6">
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <h4 className="text-md font-bold text-slate-800">Habit Matrix</h4>

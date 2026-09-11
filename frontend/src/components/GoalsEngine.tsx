@@ -1,6 +1,7 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { getApiBaseUrl } from '@/lib/api';
+import { loadLocal, saveLocal, makeId } from '@/lib/localStore';
 
 interface Goal {
   id: string;
@@ -24,7 +25,10 @@ export default function GoalsEngine() {
   }, []);
 
   const fetchGoals = async () => {
-    if (!token) return;
+    if (!token) {
+      setGoals(loadLocal<Goal[]>('zen_goals', []));
+      return;
+    }
     try {
       const res = await fetch(`${API_BASE}/goals`, {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -40,7 +44,21 @@ export default function GoalsEngine() {
 
   const handleAddGoal = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newGoalTitle.trim() || !token) return;
+    if (!newGoalTitle.trim()) return;
+
+    if (!token) {
+      const newGoal: Goal = {
+        id: makeId(),
+        title: newGoalTitle.trim(),
+        timeframe: activeTimeframe,
+        isCompleted: false,
+      };
+      const next = [newGoal, ...loadLocal<Goal[]>('zen_goals', [])];
+      saveLocal('zen_goals', next);
+      setGoals(next);
+      setNewGoalTitle('');
+      return;
+    }
 
     setIsLoading(true);
     try {
@@ -66,7 +84,14 @@ export default function GoalsEngine() {
   };
 
   const toggleGoal = async (id: string, currentStatus: boolean) => {
-    if (!token) return;
+    if (!token) {
+      const next = loadLocal<Goal[]>('zen_goals', []).map((g) =>
+        g.id === id ? { ...g, isCompleted: !currentStatus } : g
+      );
+      saveLocal('zen_goals', next);
+      setGoals(next);
+      return;
+    }
     try {
       const res = await fetch(`${API_BASE}/goals/${id}`, {
         method: 'PATCH',
@@ -86,7 +111,12 @@ export default function GoalsEngine() {
   };
 
   const deleteGoal = async (id: string) => {
-    if (!token) return;
+    if (!token) {
+      const next = loadLocal<Goal[]>('zen_goals', []).filter((g) => g.id !== id);
+      saveLocal('zen_goals', next);
+      setGoals(next);
+      return;
+    }
     try {
       const res = await fetch(`${API_BASE}/goals/${id}`, {
         method: 'DELETE',
