@@ -37,14 +37,15 @@ interface ComposerProps {
     createdAt?: string;
   }) => Promise<void>;
   autoOpen?: boolean;
+  initialMode?: Mode;
   onClose?: () => void;
 }
 
-export default function Composer({ entries, todos, goals, onSave, autoOpen, onClose }: ComposerProps) {
+export default function Composer({ entries, todos, goals, onSave, autoOpen, initialMode, onClose }: ComposerProps) {
   const [open, setOpen] = useState(!!autoOpen);
-  const [mode, setMode] = useState<Mode>('free');
+  const [mode, setMode] = useState<Mode>(initialMode || 'free');
   const [title, setTitle] = useState('');
-  const [content, setContent] = useState('');
+  const [content, setContent] = useState(initialMode === 'daily' ? DAILY_TEMPLATE : initialMode === 'evening' ? EVENING_TEMPLATE : '');
   const [mood, setMood] = useState('');
   const [tags, setTags] = useState<string[]>([]);
   const [lifeArea, setLifeArea] = useState('');
@@ -57,7 +58,7 @@ export default function Composer({ entries, todos, goals, onSave, autoOpen, onCl
   const switchMode = (next: Mode) => {
     setMode(next);
     if (next === 'daily') setContent(DAILY_TEMPLATE);
-    else if (next === 'evening') setContent(EVENING_TEMPLATE);
+    else if (next === 'evening') setContent(`${daySnapshot(todos)}${EVENING_TEMPLATE}`);
     else setContent('');
   };
 
@@ -232,6 +233,25 @@ export default function Composer({ entries, todos, goals, onSave, autoOpen, onCl
       </div>
     </div>
   );
+}
+
+function daySnapshot(todos: Todo[]): string {
+  const isToday = (iso?: string) =>
+    iso ? new Date(iso).toDateString() === new Date().toDateString() : false;
+
+  const doneToday = todos.filter((t) => t.isCompleted && (isToday(t.updatedAt) || isToday(t.createdAt)));
+  const open = todos.filter((t) => !t.isCompleted);
+  const list = (items: Todo[]) => items.slice(0, 5).map((t) => `• ${t.task}`).join('\n');
+
+  const parts: string[] = [];
+  if (doneToday.length || open.length) {
+    parts.push(`Today's snapshot`);
+    parts.push(`Done: ${doneToday.length} · Open: ${open.length}`);
+    if (doneToday.length) parts.push(`Completed\n${list(doneToday)}`);
+    if (open.length) parts.push(`Still open\n${list(open)}`);
+    parts.push('');
+  }
+  return parts.length ? `${parts.join('\n')}` : '';
 }
 
 function PromptStrip({ label, prompts }: { label: string; prompts: string[] }) {

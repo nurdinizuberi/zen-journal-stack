@@ -15,7 +15,7 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { href: '/', label: 'Dashboard', icon: '◈' },
+  { href: '/', label: 'Today', icon: '◈' },
   { href: '/journal', label: 'Journal', icon: '✎' },
   { href: '/goals', label: 'Goals', icon: '◎' },
   { href: '/tasks', label: 'Tasks', icon: '☑' },
@@ -52,7 +52,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   };
 
   const isActive = (href: string) =>
-    href === '/' ? pathname === '/' : pathname.startsWith(href);
+    href === '/' ? pathname === '/' || pathname === '/today' : pathname.startsWith(href);
 
   const openNew = (href: string) => {
     setNewMenuOpen(false);

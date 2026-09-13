@@ -5,15 +5,17 @@
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useTodos, useGoals } from '@/hooks/useData';
-import { Button, Card, EmptyState, Input, Select, Badge } from '@/components/ui';
+import { Button, Card, EmptyState, Input, Select, Badge, Modal, Switch } from '@/components/ui';
 import { PRIORITIES } from '@/lib/constants';
-import { Todo } from '@/types';
+import { Todo, ReminderRepeat } from '@/types';
 
 const priorityColor: Record<string, string> = {
   high: 'rose',
   medium: 'amber',
   low: 'slate',
 };
+
+const todayLocal = () => new Date().toISOString().split('T')[0];
 
 export default function TasksPage() {
   return (
@@ -34,6 +36,11 @@ function TasksContent() {
   const [task, setTask] = useState('');
   const [goalId, setGoalId] = useState('');
   const [priority, setPriority] = useState('medium');
+  const [remind, setRemind] = useState(false);
+  const [reminderTime, setReminderTime] = useState('08:00');
+  const [reminderDate, setReminderDate] = useState(todayLocal());
+  const [reminderRepeat, setReminderRepeat] = useState<ReminderRepeat>('none');
+  const [reminderFor, setReminderFor] = useState<Todo | null>(null);
 
   const [trackingId, setTrackingId] = useState<string | null>(null);
   const [seconds, setSeconds] = useState(0);
@@ -62,8 +69,17 @@ function TasksContent() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!task.trim()) return;
-    await addTodo({ task: task.trim(), goalId: goalId || null, priority });
+    await addTodo({
+      task: task.trim(),
+      goalId: goalId || null,
+      priority,
+      reminderEnabled: remind,
+      reminderTime: remind ? reminderTime : null,
+      reminderDate: remind ? reminderDate : null,
+      reminderRepeat: remind ? reminderRepeat : 'none',
+    });
     setTask('');
+    setRemind(false);
   };
 
   const stopTracking = async (id: string) => {
@@ -111,8 +127,39 @@ function TasksContent() {
               ))}
             </Select>
           </div>
+          <button
+            type="button"
+            onClick={() => setRemind((r) => !r)}
+            aria-pressed={remind}
+            className={`mb-1 rounded-xl border px-3.5 py-2.5 text-sm font-semibold transition ${
+              remind
+                ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-300'
+                : 'border-slate-200 bg-white text-slate-400 hover:text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+            }`}
+            title={remind ? 'Remove reminder' : 'Add a reminder'}
+          >
+            {remind ? '⏰' : '🔔'}
+          </button>
           <Button type="submit" disabled={!task.trim()}>Add task</Button>
         </form>
+        {remind && (
+          <div className="mt-4 flex flex-wrap items-end gap-3 border-t border-slate-100 pt-4 dark:border-slate-800">
+            <div className="w-full sm:w-32">
+              <Input label="Time" type="time" value={reminderTime} onChange={(e) => setReminderTime(e.target.value)} />
+            </div>
+            <div className="w-full sm:w-40">
+              <Input label="From" type="date" value={reminderDate} min={todayLocal()} onChange={(e) => setReminderDate(e.target.value)} />
+            </div>
+            <div className="w-full sm:w-auto">
+              <Select label="Repeat" value={reminderRepeat} onChange={(e) => setReminderRepeat(e.target.value as ReminderRepeat)}>
+                <option value="none">Once</option>
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+              </Select>
+            </div>
+            <p className="w-full text-xs text-slate-400">A gentle reminder arrives as a notification when you&apos;ve allowed notifications.</p>
+          </div>
+        )}
       </Card>
 
       {/* Tracking session */}
@@ -161,11 +208,21 @@ function TasksContent() {
               tracking={trackingId === todo.id}
               onToggle={() => toggleTodo(todo.id)}
               onStart={() => { setTrackingId(todo.id); setSeconds(0); }}
+              onEditReminder={() => setReminderFor(todo)}
               onDelete={() => deleteTodo(todo.id)}
             />
           ))}
         </div>
       )}
+
+      <ReminderModal
+        todo={reminderFor}
+        onClose={() => setReminderFor(null)}
+        onSave={async (id, patch) => {
+          await updateTodo(id, patch);
+          setReminderFor(null);
+        }}
+      />
     </div>
   );
 }
@@ -175,14 +232,17 @@ function TaskRow({
   tracking,
   onToggle,
   onStart,
+  onEditReminder,
   onDelete,
 }: {
   todo: Todo;
   tracking: boolean;
   onToggle: () => void;
   onStart: () => void;
+  onEditReminder: () => void;
   onDelete: () => void;
 }) {
+  const hasReminder = Boolean(todo.reminderEnabled);
   return (
     <div
       className={`group flex items-center justify-between gap-3 rounded-xl border bg-white px-4 py-3 transition dark:bg-slate-900 ${
@@ -207,6 +267,10 @@ function TaskRow({
             <Badge color={priorityColor[todo.priority] as never}>{todo.priority}</Badge>
             {todo.goal && <Badge color="violet">{todo.goal.title}</Badge>}
             {todo.lifeArea && <Badge>{todo.lifeArea}</Badge>}
+            {hasReminder && <Badge color="amber">⏰ {todo.reminderTime}</Badge>}
+            {!hasReminder && todo.reminderEnabled === false && !todo.isCompleted && (
+              <span className="text-[10px] text-slate-300">no reminder</span>
+            )}
             {todo.timeSpent > 0 && <span className="text-[10px] text-slate-400">{todo.timeSpent}m invested</span>}
           </div>
         </div>
@@ -216,6 +280,16 @@ function TaskRow({
         {!todo.isCompleted && !tracking && (
           <Button variant="secondary" size="sm" onClick={onStart}>⏱ Track</Button>
         )}
+        <button
+          onClick={onEditReminder}
+          title={hasReminder ? 'Edit reminder' : 'Add reminder'}
+          className={`grid h-8 w-8 place-items-center rounded-lg text-sm transition hover:bg-slate-100 dark:hover:bg-slate-800 ${
+            hasReminder ? 'text-amber-500' : 'text-slate-300 hover:text-slate-500'
+          }`}
+          aria-label="Edit reminder"
+        >
+          ⏰
+        </button>
         <button
           onClick={() => {
             if (confirm('Remove this task?')) onDelete();
@@ -227,5 +301,73 @@ function TaskRow({
         </button>
       </div>
     </div>
+  );
+}
+
+function ReminderModal({
+  todo,
+  onClose,
+  onSave,
+}: {
+  todo: Todo | null;
+  onClose: () => void;
+  onSave: (id: string, patch: Partial<Todo>) => Promise<void>;
+}) {
+  const [enabled, setEnabled] = useState(false);
+  const [time, setTime] = useState('08:00');
+  const [date, setDate] = useState(todayLocal());
+  const [repeat, setRepeat] = useState<ReminderRepeat>('none');
+
+  useEffect(() => {
+    if (todo) {
+      setEnabled(Boolean(todo.reminderEnabled));
+      setTime(todo.reminderTime || '08:00');
+      setDate(todo.reminderDate || todayLocal());
+      setRepeat(todo.reminderRepeat || 'none');
+    }
+  }, [todo]);
+
+  const save = () => {
+    if (!todo) return;
+    void onSave(todo.id, {
+      reminderEnabled: enabled,
+      reminderTime: enabled ? time : null,
+      reminderDate: enabled ? date : null,
+      reminderRepeat: enabled ? repeat : 'none',
+    });
+  };
+
+  return (
+    <Modal open={Boolean(todo)} onClose={onClose} title="Reminder">
+      {todo && (
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600 dark:text-slate-300">{todo.task}</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">Remind me</p>
+              <p className="text-xs text-slate-400">A gentle push, once your notifications are allowed.</p>
+            </div>
+            <Switch checked={enabled} onChange={setEnabled} label="Remind me" />
+          </div>
+          {enabled && (
+            <div className="grid grid-cols-2 gap-3">
+              <Input label="Time" type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+              <Input label="Date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              <div className="col-span-2">
+                <Select label="Repeat" value={repeat} onChange={(e) => setRepeat(e.target.value as ReminderRepeat)}>
+                  <option value="none">Once</option>
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                </Select>
+              </div>
+            </div>
+          )}
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="secondary" onClick={onClose}>Cancel</Button>
+            <Button onClick={save} disabled={enabled && !time}>Save reminder</Button>
+          </div>
+        </div>
+      )}
+    </Modal>
   );
 }

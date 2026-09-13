@@ -22,7 +22,12 @@ export default function JournalPage() {
 
 function JournalContent() {
   const searchParams = useSearchParams();
-  const autoWrite = searchParams.get('mode') === 'write';
+  const modeParam = searchParams.get('mode');
+  const autoWrite = modeParam === 'write';
+  const autoEvening = modeParam === 'evening' || searchParams.get('type') === 'reflection';
+  const autoDaily = modeParam === 'daily';
+  const autoOpen = autoWrite || autoDaily || autoEvening;
+  const initialMode = autoEvening ? 'evening' : autoDaily ? 'daily' : autoWrite ? 'free' : undefined;
   const favOnly = searchParams.get('fav') === '1';
 
   const { entries, addEntry, updateEntry, deleteEntry } = useEntries();
@@ -91,7 +96,8 @@ function JournalContent() {
         todos={todos}
         goals={goals}
         onSave={save}
-        autoOpen={autoWrite}
+        autoOpen={autoOpen}
+        initialMode={initialMode}
         onClose={updateAllTags}
       />
 

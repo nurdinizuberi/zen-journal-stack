@@ -3,9 +3,11 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useApp } from '@/context/AppContext';
 import { useEntries, useTodos, useGoals, useBooks } from '@/hooks/useData';
-import { Button, Card, CardHeader, Badge } from '@/components/ui';
+import { useNotifications } from '@/hooks/useNotifications';
+import { Button, Card, CardHeader, Badge, Switch } from '@/components/ui';
 import { getApiBaseUrl } from '@/lib/api';
 import { loadLocal } from '@/lib/localStore';
 import { JournalEntry, Todo, Goal, ReadingBook } from '@/types';
@@ -168,6 +170,9 @@ export default function SettingsPage() {
         </div>
       </Card>
 
+      {/* Daily rhythm & notifications */}
+      <NotificationCard isGuest={isGuest} setShowAuthModal={setShowAuthModal} />
+
       {/* Privacy */}
       <Card>
         <CardHeader title="Privacy & data" subtitle="Plain-language answers about your journal." />
@@ -216,6 +221,194 @@ function PrivacyRow({ label, value }: { label: string; value: string }) {
     <div className="rounded-xl bg-slate-50 p-3.5 dark:bg-slate-800">
       <p className="text-xs font-bold uppercase tracking-wider text-slate-400">{label}</p>
       <p className="mt-1 text-sm text-slate-700 dark:text-slate-200">{value}</p>
+    </div>
+  );
+}
+
+function NotificationCard({ isGuest, setShowAuthModal }: { isGuest: boolean; setShowAuthModal: (v: boolean) => void }) {
+  const notifications = useNotifications();
+  const { permission, prefs, loading, syncing, testSending } = notifications;
+
+  if (isGuest) {
+    return (
+      <Card>
+        <CardHeader title="Daily rhythm & notifications" subtitle="Gentle nudges to keep your rituals alive." />
+        <div className="flex flex-wrap items-center justify-between gap-3 p-5">
+          <p className="text-sm text-slate-600 dark:text-slate-300">
+            Sign in to receive calm reminders for your morning intention, evening reflection, and tasks.
+          </p>
+          <Button variant="soft" onClick={() => setShowAuthModal(true)}>Sign in to enable</Button>
+        </div>
+      </Card>
+    );
+  }
+
+  const isDefault = permission === 'default';
+  const isDenied = permission === 'denied';
+
+  return (
+    <Card>
+      <CardHeader
+        title="Daily rhythm & notifications"
+        subtitle="Gentle nudges, never noise. You stay in control."
+        action={!isDefault && !isDenied ? <Badge color="emerald">{permission === 'granted' ? 'Allowed' : 'Unavailable'}</Badge> : undefined}
+      />
+
+      {permission === 'unsupported' && (
+        <div className="p-5 text-sm text-slate-500 dark:text-slate-400">
+          <p>
+            This browser doesn&apos;t support notifications. Install ZenJournal as a Progressive Web App on a
+            modern browser (Chrome, Edge, Safari, or a mobile device) to get reminders.
+          </p>
+        </div>
+      )}
+
+      {isDefault && (
+        <div className="flex flex-wrap items-center justify-between gap-3 p-5">
+          <div>
+            <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">Allow notifications</p>
+            <p className="text-xs text-slate-400">You&apos;ll be asked once by your browser. Nothing is sent until you allow it.</p>
+          </div>
+          <Button variant="soft" onClick={() => notifications.enable()} disabled={syncing}>
+            {syncing ? 'Setting up…' : 'Enable notifications'}
+          </Button>
+        </div>
+      )}
+
+      {isDenied && (
+        <div className="p-5 text-sm text-slate-600 dark:text-slate-300">
+          <p>Notifications are blocked in this browser.</p>
+          <p className="mt-1 text-xs text-slate-400">
+            Allow zen-journal notifications in your browser&apos;s site settings, then refresh this page.
+          </p>
+          <Button variant="secondary" size="sm" className="mt-3" onClick={() => notifications.enable()}>
+            Try again
+          </Button>
+        </div>
+      )}
+
+      {permission === 'granted' && (
+        <div className="space-y-4 p-5">
+          <MasterRow
+            label="All reminders"
+            hint="Master switch for morning, evening, and task reminders."
+            checked={Boolean(prefs?.allEnabled)}
+            disabled={loading}
+            onChange={(v) => notifications.update({ allEnabled: v })}
+          />
+          <ReminderRow
+            emoji="🌅"
+            label="Morning intention"
+            hint="Opens your Today view."
+            enabled={Boolean(prefs?.allEnabled) && Boolean(prefs?.morningEnabled)}
+            time={prefs?.morningTime || '07:00'}
+            disabled={loading || !prefs?.allEnabled}
+            onToggle={(v) => notifications.update({ morningEnabled: v })}
+            onTime={(v) => notifications.update({ morningTime: v })}
+            url="/today"
+          />
+          <ReminderRow
+            emoji="🌙"
+            label="Evening reflection"
+            hint="Opens your evening check-in."
+            enabled={Boolean(prefs?.allEnabled) && Boolean(prefs?.eveningEnabled)}
+            time={prefs?.eveningTime || '21:00'}
+            disabled={loading || !prefs?.allEnabled}
+            onToggle={(v) => notifications.update({ eveningEnabled: v })}
+            onTime={(v) => notifications.update({ eveningTime: v })}
+            url="/journal/new?type=reflection"
+          />
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50 p-4 dark:bg-slate-800">
+            <div>
+              <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">Task reminders</p>
+              <p className="text-xs text-slate-400">
+                Set per-task in{' '}
+                <Link href="/tasks" className="font-semibold text-emerald-600 hover:underline dark:text-emerald-400">
+                  Tasks
+                </Link>
+                , or tap a task&apos;s bell.
+              </p>
+            </div>
+            <Button variant="secondary" size="sm" onClick={() => notifications.sendTest()} disabled={testSending}>
+              {testSending ? 'Sending…' : 'Send test'}
+            </Button>
+          </div>
+          <p className="text-xs text-slate-400">
+            Your timezone ({prefs?.timezone || 'detecting…'}) is used to time reminders perfectly. Reminders arrive
+            as notifications on this device whenever the app is installed.
+          </p>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function MasterRow({
+  label,
+  hint,
+  checked,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  hint: string;
+  checked: boolean;
+  disabled: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div>
+        <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">{label}</p>
+        <p className="text-xs text-slate-400">{hint}</p>
+      </div>
+      <Switch checked={checked} onChange={onChange} disabled={disabled} label={label} />
+    </div>
+  );
+}
+
+function ReminderRow({
+  emoji,
+  label,
+  hint,
+  enabled,
+  time,
+  disabled,
+  onToggle,
+  onTime,
+  url,
+}: {
+  emoji: string;
+  label: string;
+  hint: string;
+  enabled: boolean;
+  time: string;
+  disabled: boolean;
+  onToggle: (v: boolean) => void;
+  onTime: (v: string) => void;
+  url: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 p-4 dark:bg-slate-800">
+      <div className="min-w-0">
+        <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+          <span aria-hidden>{emoji}</span> {label}
+        </p>
+        <p className="text-xs text-slate-400">
+          {hint} Opens <span className="font-mono text-[11px]">{url}</span>
+        </p>
+      </div>
+      <div className="flex shrink-0 items-center gap-3">
+        <input
+          type="time"
+          value={time}
+          disabled={disabled || !enabled}
+          onChange={(e) => onTime(e.target.value)}
+          aria-label={`${label} time`}
+          className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700 outline-none disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+        />
+        <Switch checked={enabled} onChange={onToggle} disabled={disabled} label={label} />
+      </div>
     </div>
   );
 }

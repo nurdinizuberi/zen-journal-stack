@@ -8,7 +8,9 @@ import { fileURLToPath } from 'url';
 import multer from 'multer';
 import { GoogleGenAI } from '@google/genai';
 import habitRoutes from './routes/habits.js';
+import notificationRoutes from './routes/notifications.js';
 import { prisma } from './db.js';
+import { initNotifier, startScheduler } from './services/notifier.js';
 
 // ==========================================
 // INITIALIZATION & ENVIRONMENT CONFIG
@@ -37,6 +39,7 @@ const allowedOrigins = [
 app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(express.json());
 app.use('/api/habits', habitRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, 'uploads/'),
@@ -258,55 +261,63 @@ app.get('/api/todos', authenticateToken, async (req, res) => {
 });
 
 app.post('/api/todos', authenticateToken, async (req, res) => {
-  const { task, goalId, priority, lifeArea, dueDate, notes } = req.body;
-  if (!task) return res.status(400).json({ error: 'Task content cannot be empty.' });
+   const { task, goalId, priority, lifeArea, dueDate, notes, reminderEnabled, reminderTime, reminderDate, reminderRepeat } = req.body;
+   if (!task) return res.status(400).json({ error: 'Task content cannot be empty.' });
 
-  try {
-    const newTodo = await prisma.todo.create({
-      data: {
-        task,
-        userId: req.user.userId,
-        goalId: goalId || null,
-        priority: priority || 'medium',
-        lifeArea: lifeArea || null,
-        notes: notes || '',
-        dueDate: dueDate ? new Date(dueDate) : undefined
-      },
-      include: { goal: { select: { id: true, title: true } } }
-    });
-    res.status(201).json(newTodo);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to create task.' });
-  }
-});
+   try {
+     const newTodo = await prisma.todo.create({
+       data: {
+         task,
+         userId: req.user.userId,
+         goalId: goalId || null,
+         priority: priority || 'medium',
+         lifeArea: lifeArea || null,
+         notes: notes || '',
+         dueDate: dueDate ? new Date(dueDate) : undefined,
+         reminderEnabled: Boolean(reminderEnabled) || false,
+         reminderTime: reminderTime || null,
+         reminderDate: reminderDate || null,
+         reminderRepeat: ['none', 'daily', 'weekly'].includes(reminderRepeat) ? reminderRepeat : 'none'
+       },
+       include: { goal: { select: { id: true, title: true } } }
+     });
+     res.status(201).json(newTodo);
+   } catch (error) {
+     res.status(500).json({ error: 'Failed to create task.' });
+   }
+ });
 
-app.patch('/api/todos/:id', authenticateToken, async (req, res) => {
-  const { isCompleted, timeSpent, goalId, priority, lifeArea, task, notes, dueDate } = req.body;
-  try {
-    const existing = await prisma.todo.findFirst({
-      where: { id: req.params.id, userId: req.user.userId }
-    });
-    if (!existing) return res.status(404).json({ error: 'Task not found.' });
+ app.patch('/api/todos/:id', authenticateToken, async (req, res) => {
+   const { isCompleted, timeSpent, goalId, priority, lifeArea, task, notes, dueDate, reminderEnabled, reminderTime, reminderDate, reminderRepeat } = req.body;
+   try {
+     const existing = await prisma.todo.findFirst({
+       where: { id: req.params.id, userId: req.user.userId }
+     });
+     if (!existing) return res.status(404).json({ error: 'Task not found.' });
 
-    const updated = await prisma.todo.update({
-      where: { id: req.params.id },
-      data: {
-        isCompleted: isCompleted !== undefined ? isCompleted : existing.isCompleted,
-        timeSpent: timeSpent !== undefined ? (existing.timeSpent + timeSpent) : existing.timeSpent,
-        goalId: goalId !== undefined ? goalId : existing.goalId,
-        priority: priority !== undefined ? priority : existing.priority,
-        lifeArea: lifeArea !== undefined ? lifeArea : existing.lifeArea,
-        task: task !== undefined ? task : existing.task,
-        notes: notes !== undefined ? notes : existing.notes,
-        dueDate: dueDate !== undefined ? new Date(dueDate) : existing.dueDate
-      },
-      include: { goal: { select: { id: true, title: true } } }
-    });
-    res.json(updated);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to update task.' });
-  }
-});
+     const updated = await prisma.todo.update({
+       where: { id: req.params.id },
+       data: {
+         isCompleted: isCompleted !== undefined ? isCompleted : existing.isCompleted,
+         timeSpent: timeSpent !== undefined ? (existing.timeSpent + timeSpent) : existing.timeSpent,
+         goalId: goalId !== undefined ? goalId : existing.goalId,
+         priority: priority !== undefined ? priority : existing.priority,
+         lifeArea: lifeArea !== undefined ? lifeArea : existing.lifeArea,
+         task: task !== undefined ? task : existing.task,
+         notes: notes !== undefined ? notes : existing.notes,
+         dueDate: dueDate !== undefined ? new Date(dueDate) : existing.dueDate,
+         reminderEnabled: reminderEnabled !== undefined ? Boolean(reminderEnabled) : existing.reminderEnabled,
+         reminderTime: reminderTime !== undefined ? reminderTime : existing.reminderTime,
+         reminderDate: reminderDate !== undefined ? reminderDate : existing.reminderDate,
+         reminderRepeat: ['none', 'daily', 'weekly'].includes(reminderRepeat) ? reminderRepeat : existing.reminderRepeat
+       },
+       include: { goal: { select: { id: true, title: true } } }
+     });
+     res.json(updated);
+   } catch (error) {
+     res.status(500).json({ error: 'Failed to update task.' });
+   }
+ });
 
 app.delete('/api/todos/:id', authenticateToken, async (req, res) => {
   try {
@@ -769,4 +780,10 @@ app.get('/api/ai/report', authenticateToken, async (req, res) => {
 // ==========================================
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 ZenJournal server running at http://0.0.0.0:${PORT}`);
+  if (initNotifier()) {
+    startScheduler();
+    console.log('🔔 Web Push + Daily Rhythm scheduler started.');
+  } else {
+    console.log('⚠️  Web Push disabled — set VAPID_* env vars to enable reminders.');
+  }
 });

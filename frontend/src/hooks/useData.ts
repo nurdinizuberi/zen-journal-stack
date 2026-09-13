@@ -168,7 +168,16 @@ export function useTodos() {
   }, []);
 
   const addTodo = useCallback(
-    async (input: { task: string; goalId?: string | null; priority?: string; lifeArea?: string | null }) => {
+    async (input: {
+      task: string;
+      goalId?: string | null;
+      priority?: string;
+      lifeArea?: string | null;
+      reminderEnabled?: boolean;
+      reminderTime?: string | null;
+      reminderDate?: string | null;
+      reminderRepeat?: 'none' | 'daily' | 'weekly';
+    }) => {
       const token = getToken();
       if (!token) {
         const newTodo: Todo = {
@@ -181,6 +190,10 @@ export function useTodos() {
           goalId: input.goalId || null,
           priority: (input.priority as Todo['priority']) || 'medium',
           lifeArea: input.lifeArea || null,
+          reminderEnabled: Boolean(input.reminderEnabled),
+          reminderTime: input.reminderTime || null,
+          reminderDate: input.reminderDate || null,
+          reminderRepeat: input.reminderRepeat || 'none',
         };
         const next = [newTodo, ...todos];
         saveLocalTodos(next);
@@ -188,7 +201,16 @@ export function useTodos() {
       }
       const created = await apiPost<Todo>(
         '/todos',
-        { task: input.task, goalId: input.goalId || null, priority: input.priority || 'medium', lifeArea: input.lifeArea || null },
+        {
+          task: input.task,
+          goalId: input.goalId || null,
+          priority: input.priority || 'medium',
+          lifeArea: input.lifeArea || null,
+          reminderEnabled: Boolean(input.reminderEnabled),
+          reminderTime: input.reminderTime || null,
+          reminderDate: input.reminderDate || null,
+          reminderRepeat: input.reminderRepeat || 'none',
+        },
         token
       );
       setTodos((prev) => [created, ...prev]);

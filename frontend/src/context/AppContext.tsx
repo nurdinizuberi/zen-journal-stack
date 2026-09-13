@@ -4,6 +4,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { getApiBaseUrl } from '@/lib/api';
+import { syncPushSubscription } from '@/lib/notifications';
 
 interface AppContextType {
   token: string | null;
@@ -72,6 +73,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setToken(newToken);
       setUserName(name);
       setShowAuthModal(false);
+      syncPushSubscription(newToken);
       return {};
     } catch {
       return { error: 'Network error — the server may be waking up.' };
@@ -91,6 +93,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       // Sync guest data to server
       syncGuestData(newToken);
+      syncPushSubscription(newToken);
 
       localStorage.setItem('zen_token', newToken);
       localStorage.setItem('zen_name', name);

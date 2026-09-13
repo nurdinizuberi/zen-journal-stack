@@ -30,6 +30,26 @@ export interface Todo {
   priority: Priority;
   lifeArea?: string | null;
   notes?: string;
+  reminderEnabled?: boolean;
+  reminderTime?: string | null;
+  reminderDate?: string | null;
+  reminderRepeat?: 'none' | 'daily' | 'weekly';
+  reminderLastSentAt?: string | null;
+}
+
+export type ReminderRepeat = 'none' | 'daily' | 'weekly';
+
+export interface NotificationPrefs {
+  id: string;
+  allEnabled: boolean;
+  morningEnabled: boolean;
+  morningTime: string;
+  eveningEnabled: boolean;
+  eveningTime: string;
+  timezone: string;
+  lastMorningSent?: string | null;
+  lastEveningSent?: string | null;
+  updatedAt?: string;
 }
 
 export interface GoalMilestone {
