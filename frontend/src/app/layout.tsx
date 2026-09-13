@@ -1,6 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { AppProvider } from "@/context/AppContext";
+import AppShell from "@/components/AppShell";
+import AuthModal from "@/components/AuthModal";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -13,8 +16,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ZenJournal Suite",
-  description: "Reflections, tasks, goals, reading and productivity habits in one focus sanctuary.",
+  title: "ZenJournal",
+  description: "A personal growth system that turns reflection into meaningful action.",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
@@ -47,7 +50,14 @@ export default function RootLayout({
       <head>
         <meta name="mobile-web-app-capable" content="yes" />
       </head>
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full">
+        <AppProvider>
+          <AppShell>
+            {children}
+          </AppShell>
+          <AuthModal />
+        </AppProvider>
+      </body>
     </html>
   );
 }

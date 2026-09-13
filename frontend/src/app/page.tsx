@@ -1,744 +1,307 @@
-// src/app/page.tsx
+// src/app/page.tsx — Dashboard: the calmer, focused home of ZenJournal
+
 'use client';
 
-import { useState, useEffect } from 'react';
-import { JournalView } from '@/features/journal';
-import { GoalsView } from '@/features/goals';
-import { ProductivityHubView } from '@/features/productivity';
-import { ReadingTracker } from '@/features/reading';
-import { TodosView } from '@/features/todos';
-import { getApiBaseUrl } from '@/lib/api';
-import { loadLocal, saveLocal, makeId } from '@/lib/localStore';
-import { getDailyFuel, FuelQuote } from '@/utils/morningFuel';
+import Link from 'next/link';
+import { useMemo, useState } from 'react';
+import { useApp } from '@/context/AppContext';
+import { useEntries, useTodos, useGoals, useBooks, useIntention } from '@/hooks/useData';
+import { Card, Button, Badge, EmptyState, ProgressBar, Stat, TagChip } from '@/components/ui';
+import { MOODS, moodEmoji, timeAgo, friendlyDate, hourGreeting } from '@/lib/constants';
+import { computeStreak } from '@/lib/time';
+import { useRouter } from 'next/navigation';
 
-interface BeforeInstallPromptEvent extends Event {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
-}
+export default function Dashboard() {
+  const { userName, isGuest, setShowAuthModal } = useApp();
+  const router = useRouter();
+  const { entries, addEntry } = useEntries();
+  const { todos } = useTodos();
+  const { goals } = useGoals(false);
+  const { books } = useBooks();
+  const { intention, saveIntention } = useIntention();
 
-interface JournalEntry {
-  id: string;
-  title: string;
-  content: string;
-  mood: string;
-  createdAt: string;
-  attachments?: Array<{ url: string; name: string; fileType: string }>;
-  voiceTranscript?: string;
-}
+  const [intentionText, setIntentionText] = useState(intention?.intention || '');
+  const [desiredState, setDesiredState] = useState(intention?.desiredState || '');
+  const [moodSaved, setMoodSaved] = useState(false);
 
-interface Todo {
-  id: string;
-  task: string;
-  isCompleted: boolean;
-  timeSpent: number;
-  dueDate: string;
-}
+  const { greeting, question } = hourGreeting();
 
-interface ReadingBook {
-  id: string;
-  title: string;
-  author: string;
-  totalPages: number;
-  currentPage: number;
-  notes: string;
-  completed: boolean;
-}
+  const streak = useMemo(() => computeStreak(entries.map((e) => e.createdAt)), [entries]);
+  const thisWeekCount = useMemo(() => {
+    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    return entries.filter((e) => new Date(e.createdAt).getTime() >= weekAgo).length;
+  }, [entries]);
+  const thisMonthCount = useMemo(() => {
+    const monthAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    return entries.filter((e) => new Date(e.createdAt).getTime() >= monthAgo).length;
+  }, [entries]);
 
-interface Analytics {
-  summary: {
-    totalTasksCreated: number;
-    completedTasks: number;
-    completionRate: string;
-    hoursDedicated: string;
-  };
-  moodDistribution: Record<string, number>;
-  readingSummary?: {
-    totalBooks: number;
-    completedBooks: number;
-    pagesRead: number;
-    totalPages: number;
-    activeBook: string;
-  };
-}
+  const completedTasks = todos.filter((t) => t.isCompleted).length;
+  const remainingTasks = todos.filter((t) => !t.isCompleted).length;
+  const activeGoals = goals.filter((g) => !g.isCompleted).length;
+  const completedGoals = goals.filter((g) => g.isCompleted).length;
+  const activeBooks = books.filter((b) => !b.completed).length;
+  const recentEntry = entries[0];
 
-export default function Home() {
-  const [token, setToken] = useState<string | null>(null);
-  const [userName, setUserName] = useState('');
-  const [authOpen, setAuthOpen] = useState(false);
-  const [isLoginView, setIsLoginView] = useState(true);
-  const [authEmail, setAuthEmail] = useState('');
-  const [authPassword, setAuthPassword] = useState('');
-  const [authName, setAuthName] = useState('');
-  const [authLoading, setAuthLoading] = useState(false);
+  const todayJournaled = entries.length > 0 && new Date(entries[0].createdAt).toDateString() === new Date().toDateString();
 
-  const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-
-  const [activeTab, setActiveTab] = useState<'journal' | 'todos' | 'goals' | 'reading' | 'productivity'>('journal');
-  const [timeRange, setTimeRange] = useState<'all' | 'week' | 'month'>('all');
-
-  const [entries, setEntries] = useState<JournalEntry[]>([]);
-  const [todos, setTodos] = useState<Todo[]>([]);
-  const [analytics, setAnalytics] = useState<Analytics | null>(null);
-  const [aiReport, setAiReport] = useState<string>('');
-  const [isAiLoading, setIsAiLoading] = useState<boolean>(false);
-
-  const [journalTitle, setJournalTitle] = useState('');
-  const [journalContent, setJournalContent] = useState('');
-  const [journalMood, setJournalMood] = useState('Calm');
-  const [todoTask, setTodoTask] = useState('');
-
-  const [dailyFuel, setDailyFuel] = useState<FuelQuote | null>(null);
-  const [dark, setDark] = useState(false);
-
-  const [trackingTodoId, setTrackingTodoId] = useState<string | null>(null);
-  const [secondsElapsed, setSecondsElapsed] = useState(0);
-  const [activeBookTitle, setActiveBookTitle] = useState('No book selected yet');
-
-  const API_BASE = getApiBaseUrl();
-  const isGuest = !token;
-  const calendarCells = Array.from({ length: 35 }, (_, index) => ({
-    day: index + 1,
-    active: index % 3 === 0 || index % 5 === 0,
-  }));
-
-  useEffect(() => {
-    const savedToken = localStorage.getItem('zen_token');
-    const savedName = localStorage.getItem('zen_name');
-    if (savedToken) setToken(savedToken);
-    if (savedName) setUserName(savedName);
-    setDailyFuel(getDailyFuel(savedName || 'Guest'));
-
-    const savedTheme = localStorage.getItem('zen_theme');
-    if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-      setDark(true);
-    }
-
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch(() => {});
-    }
-
-    const installHandler = (e: Event) => {
-      e.preventDefault();
-      setDeferredInstallPrompt(e as BeforeInstallPromptEvent);
-    };
-    window.addEventListener('beforeinstallprompt', installHandler);
-    return () => window.removeEventListener('beforeinstallprompt', installHandler);
-  }, []);
-
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', dark);
-    if (typeof window !== 'undefined') saveLocal('zen_theme', dark ? 'dark' : 'light');
-  }, [dark]);
-
-  useEffect(() => {
-    if (activeTab === 'journal') fetchJournalEntries();
-    if (activeTab === 'todos') fetchTodos();
-    if (activeTab === 'productivity') {
-      fetchAnalytics();
-      fetchAiReport();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, activeTab, timeRange]);
-
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (trackingTodoId) {
-      interval = setInterval(() => {
-        setSecondsElapsed((prev) => prev + 1);
-      }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [trackingTodoId]);
-
-  const buildLocalAnalytics = (): Analytics => {
-    const localTodos = loadLocal<Todo[]>('zen_todos', []);
-    const localEntries = loadLocal<JournalEntry[]>('zen_entries', []);
-    const localBooks = loadLocal<ReadingBook[]>('zen_books', []);
-
-    const totalTasksCreated = localTodos.length;
-    const completedTasks = localTodos.filter((t) => t.isCompleted).length;
-    const completionRate = totalTasksCreated === 0 ? '0%' : `${Math.round((completedTasks / totalTasksCreated) * 100)}%`;
-    const totalMinutes = localTodos.reduce((sum, t) => sum + (t.timeSpent || 0), 0);
-    const hoursDedicated = `${(totalMinutes / 60).toFixed(1)}`;
-
-    const moodDistribution: Record<string, number> = {};
-    for (const entry of localEntries) {
-      moodDistribution[entry.mood] = (moodDistribution[entry.mood] || 0) + 1;
-    }
-
-    const completedBooks = localBooks.filter((b) => b.completed).length;
-    const pagesRead = localBooks.reduce((sum, b) => sum + (b.currentPage || 0), 0);
-    const totalPages = localBooks.reduce((sum, b) => sum + (b.totalPages || 0), 0);
-    const activeBook = localBooks.find((b) => !b.completed)?.title || localBooks[0]?.title || 'No active book';
-
-    return {
-      summary: { totalTasksCreated, completedTasks, completionRate, hoursDedicated },
-      moodDistribution,
-      readingSummary: { totalBooks: localBooks.length, completedBooks, pagesRead, totalPages, activeBook },
-    };
+  const saveTodayIntention = () => {
+    if (!intentionText.trim()) return;
+    saveIntention({ intention: intentionText.trim(), desiredState: desiredState || undefined });
   };
 
-  const handleInstall = async () => {
-    if (!deferredInstallPrompt) return;
-    await deferredInstallPrompt.prompt();
-    const { outcome } = await deferredInstallPrompt.userChoice;
-    if (outcome === 'accepted') setDeferredInstallPrompt(null);
-  };
-
-  const handleAuth = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setAuthLoading(true);
-    const endpoint = isLoginView ? '/auth/login' : '/auth/signup';
-    const body = isLoginView ? { email: authEmail, password: authPassword } : { email: authEmail, password: authPassword, name: authName };
-
-    try {
-      const res = await fetch(`${API_BASE}${endpoint}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        alert(data.error || 'Authentication failed');
-        setAuthLoading(false);
-        return;
-      }
-
-      const syncOnSignup = !isLoginView;
-      localStorage.setItem('zen_token', data.token);
-      localStorage.setItem('zen_name', data.user.name);
-      setToken(data.token);
-      setUserName(data.user.name);
-      setDailyFuel(getDailyFuel(data.user.name));
-      setAuthOpen(false);
-      setAuthEmail('');
-      setAuthPassword('');
-      setAuthName('');
-      setAuthLoading(false);
-
-      if (syncOnSignup) {
-        syncGuestData(data.token);
-        clearGuestDataKeys();
-      }
-    } catch (err) {
-      console.error(err);
-      alert('Network error — the server may be waking up. Please try again in a moment.');
-      setAuthLoading(false);
-    }
-  };
-
-  const syncGuestData = async (newToken: string) => {
-    const localEntries = loadLocal<JournalEntry[]>('zen_entries', []);
-    const localTodos = loadLocal<Todo[]>('zen_todos', []);
-    const localGoals = loadLocal<Array<{ id: string; title: string; timeframe: string; isCompleted: boolean }>>('zen_goals', []);
-    const localHabits = loadLocal<Array<{ id: string; name: string; description: string | null; streakCount: number; logs: Array<{ id: string; completedAt: string }> }>>('zen_habits', []);
-    const localBooks = loadLocal<ReadingBook[]>('zen_books', []);
-
-    const post = async (path: string, payload: unknown) => {
-      try {
-        await fetch(`${API_BASE}${path}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${newToken}` },
-          body: JSON.stringify(payload),
-        });
-      } catch (err) {
-        console.error(`Guest sync failed for ${path}:`, err);
-      }
-    };
-
-    for (const entry of localEntries) await post('/entries', { title: entry.title, content: entry.content, mood: entry.mood });
-    for (const todo of localTodos) await post('/todos', { task: todo.task });
-    for (const goal of localGoals) await post('/goals', { title: goal.title, timeframe: goal.timeframe });
-    for (const habit of localHabits) await post('/habits', { name: habit.name, description: habit.description });
-    for (const book of localBooks) await post('/reading', { title: book.title, author: book.author, totalPages: book.totalPages, currentPage: book.currentPage, notes: book.notes });
-  };
-
-  const clearGuestDataKeys = () => {
-    ['zen_entries', 'zen_todos', 'zen_goals', 'zen_habits', 'zen_books'].forEach((key) => localStorage.removeItem(key));
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem('zen_token');
-    localStorage.removeItem('zen_name');
-    setToken(null);
-    setUserName('');
-    setEntries([]);
-    setTodos([]);
-    setAnalytics(null);
-    setDailyFuel(getDailyFuel('Guest'));
-    setTrackingTodoId(null);
-    setSecondsElapsed(0);
-  };
-
-  const fetchJournalEntries = async () => {
-    if (!token) {
-      setEntries(loadLocal<JournalEntry[]>('zen_entries', []));
-      return;
-    }
-    const res = await fetch(`${API_BASE}/entries`, { headers: { Authorization: `Bearer ${token}` } });
-    const data = await res.json();
-    if (res.ok) setEntries(data);
-  };
-
-  const submitJournalEntry = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const title = journalTitle.trim();
-    const content = journalContent.trim();
-    if (!title || !content) return;
-
-    if (!token) {
-      const newEntry: JournalEntry = {
-        id: makeId(),
-        title,
-        content,
-        mood: journalMood,
-        createdAt: new Date().toISOString(),
-      };
-      const next = [newEntry, ...loadLocal<JournalEntry[]>('zen_entries', [])];
-      saveLocal('zen_entries', next);
-      setEntries(next);
-      setJournalTitle('');
-      setJournalContent('');
-      setJournalMood('Calm');
-      return;
-    }
-
-    const res = await fetch(`${API_BASE}/entries`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ title, content, mood: journalMood }),
+  const recordMood = async (mood: string) => {
+    await addEntry({
+      title: `Mood check-in — ${mood}`,
+      content: '',
+      mood,
     });
-
-    if (res.ok) {
-      setJournalTitle('');
-      setJournalContent('');
-      setJournalMood('Calm');
-      fetchJournalEntries();
-    } else {
-      const errorData = await res.json();
-      alert(errorData.error || 'Failed to submit modern ledger entry.');
-    }
+    setMoodSaved(true);
+    setTimeout(() => setMoodSaved(false), 2000);
   };
 
-  const deleteJournalEntry = async (id: string) => {
-    if (!confirm('Are you sure you want to remove this reflection forever?')) return;
-
-    if (!token) {
-      const next = loadLocal<JournalEntry[]>('zen_entries', []).filter((entry) => entry.id !== id);
-      saveLocal('zen_entries', next);
-      setEntries(next);
-      return;
-    }
-
-    const res = await fetch(`${API_BASE}/entries/${id}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (res.ok) fetchJournalEntries();
-  };
-
-  const fetchTodos = async () => {
-    if (!token) {
-      setTodos(loadLocal<Todo[]>('zen_todos', []));
-      return;
-    }
-    const res = await fetch(`${API_BASE}/todos`, { headers: { Authorization: `Bearer ${token}` } });
-    const data = await res.json();
-    if (res.ok) setTodos(data);
-  };
-
-  const submitTodo = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!todoTask.trim()) return;
-
-    if (!token) {
-      const newTodo: Todo = {
-        id: makeId(),
-        task: todoTask.trim(),
-        isCompleted: false,
-        timeSpent: 0,
-        dueDate: '',
-      };
-      const next = [newTodo, ...loadLocal<Todo[]>('zen_todos', [])];
-      saveLocal('zen_todos', next);
-      setTodos(next);
-      setTodoTask('');
-      return;
-    }
-
-    const res = await fetch(`${API_BASE}/todos`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ task: todoTask.trim() }),
-    });
-    if (res.ok) {
-      setTodoTask('');
-      fetchTodos();
-    }
-  };
-
-  const toggleTodoStatus = async (id: string, currentStatus: boolean) => {
-    if (!token) {
-      const next = loadLocal<Todo[]>('zen_todos', []).map((todo) =>
-        todo.id === id ? { ...todo, isCompleted: !currentStatus } : todo
-      );
-      saveLocal('zen_todos', next);
-      setTodos(next);
-      return;
-    }
-
-    const res = await fetch(`${API_BASE}/todos/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ isCompleted: !currentStatus }),
-    });
-    if (res.ok) fetchTodos();
-  };
-
-  const startTracking = (id: string) => {
-    setTrackingTodoId(id);
-    setSecondsElapsed(0);
-  };
-
-  const stopTrackingTime = async (id: string) => {
-    const minutesEarned = Math.ceil(secondsElapsed / 60);
-
-    if (!token) {
-      const next = loadLocal<Todo[]>('zen_todos', []).map((todo) =>
-        todo.id === id ? { ...todo, timeSpent: (todo.timeSpent || 0) + minutesEarned } : todo
-      );
-      saveLocal('zen_todos', next);
-      setTodos(next);
-      setTrackingTodoId(null);
-      setSecondsElapsed(0);
-      return;
-    }
-
-    const res = await fetch(`${API_BASE}/todos/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ timeSpent: minutesEarned }),
-    });
-    if (res.ok) {
-      setTrackingTodoId(null);
-      setSecondsElapsed(0);
-      fetchTodos();
-    }
-  };
-
-  const deleteTodo = async (id: string) => {
-    if (!token) {
-      const next = loadLocal<Todo[]>('zen_todos', []).filter((todo) => todo.id !== id);
-      saveLocal('zen_todos', next);
-      setTodos(next);
-      return;
-    }
-
-    const res = await fetch(`${API_BASE}/todos/${id}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (res.ok) fetchTodos();
-  };
-
-  const fetchAnalytics = async () => {
-    if (!token) {
-      setAnalytics(buildLocalAnalytics());
-      return;
-    }
-    const res = await fetch(`${API_BASE}/analytics?range=${timeRange}`, { headers: { Authorization: `Bearer ${token}` } });
-    const data = await res.json();
-    if (res.ok) setAnalytics(data);
-  };
-
-  const fetchAiReport = async () => {
-    if (!token) {
-      setAiReport('Sign in to unlock AI-powered insights generated from your habits and reflections.');
-      return;
-    }
-    setIsAiLoading(true);
-    try {
-      const res = await fetch(`${API_BASE}/ai/report`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setAiReport(data.report);
-      } else {
-        setAiReport("Could not fetch insights at this time.");
-      }
-    } catch (err) {
-      setAiReport("Network error loading AI report.");
-    } finally {
-      setIsAiLoading(false);
-    }
-  };
-
-  const handleExport = async () => {
-    let payload: Record<string, unknown>;
-    if (token) {
-      const grab = async (path: string): Promise<unknown> => {
-        try {
-          const res = await fetch(`${API_BASE}${path}`, { headers: { Authorization: `Bearer ${token}` } });
-          if (!res.ok) return [];
-          return res.json();
-        } catch {
-          return [];
-        }
-      };
-      payload = {
-        exportedAt: new Date().toISOString(),
-        entries: await grab('/entries'),
-        todos: await grab('/todos'),
-        goals: await grab('/goals'),
-        habits: await grab('/habits'),
-        reading: await grab('/reading'),
-      };
-    } else {
-      payload = {
-        exportedAt: new Date().toISOString(),
-        entries: loadLocal('zen_entries', []),
-        todos: loadLocal('zen_todos', []),
-        goals: loadLocal('zen_goals', []),
-        habits: loadLocal('zen_habits', []),
-        reading: loadLocal('zen_books', []),
-      };
-    }
-
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `zenjournal-export-${new Date().toISOString().split('T')[0]}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
+  const journalStatusText = entries.length === 0
+    ? 'Write your first reflection'
+    : todayJournaled
+      ? 'Journaled today ✓'
+      : timeAgo(entries[0].createdAt);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 pb-16 lg:pb-0">
-      <nav className="bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 sticky top-0 z-40">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex flex-col md:flex-row gap-4 items-center justify-between">
-          <div className="flex items-center justify-between w-full md:w-auto">
-            <div className="flex items-center gap-2">
-              <div className="h-3 w-3 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="font-black text-xl tracking-tight">ZenJournal Suite</span>
-            </div>
-            <div className="flex items-center gap-2 md:hidden">
-              {deferredInstallPrompt && (
-                <button onClick={handleInstall} className="text-xs font-bold text-emerald-600 dark:text-emerald-400">📲</button>
-              )}
-              {isGuest ? (
-                <button onClick={() => setAuthOpen(true)} className="text-xs font-bold text-emerald-600">Sign in</button>
-              ) : (
-                <>
-                  <span className="text-xs text-slate-400 bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-full font-medium truncate max-w-25">Hi, {userName.split(' ')[0]}</span>
-                  <button onClick={handleLogout} className="text-xs font-bold text-red-500">Exit</button>
-                </>
-              )}
-            </div>
-          </div>
+    <div className="space-y-8">
+      {/* Greeting */}
+      <section>
+        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-600 dark:text-emerald-400">
+          {greeting}
+        </p>
+        <h1 className="mt-1 text-3xl font-black tracking-tight sm:text-4xl">
+          {userName ? userName.split(' ')[0] : 'Welcome'}.
+        </h1>
+        <p className="mt-1 text-slate-500 dark:text-slate-400">{question}</p>
 
-          <div className="hidden md:flex items-center gap-6 text-sm font-medium">
-            <button onClick={() => setActiveTab('journal')} className={`pb-1 border-b-2 transition ${activeTab === 'journal' ? 'border-slate-900 dark:border-white text-slate-900 dark:text-white font-bold' : 'border-transparent text-slate-400 dark:text-slate-400'}`}>Reflections</button>
-            <button onClick={() => setActiveTab('todos')} className={`pb-1 border-b-2 transition ${activeTab === 'todos' ? 'border-slate-900 dark:border-white text-slate-900 dark:text-white font-bold' : 'border-transparent text-slate-400 dark:text-slate-400'}`}>Workspaces & Tasks</button>
-            <button onClick={() => setActiveTab('goals')} className={`pb-1 border-b-2 transition ${activeTab === 'goals' ? 'border-slate-900 dark:border-white text-slate-900 dark:text-white font-bold' : 'border-transparent text-slate-400 dark:text-slate-400'}`}>Intentional Horizons</button>
-            <button onClick={() => setActiveTab('reading')} className={`pb-1 border-b-2 transition ${activeTab === 'reading' ? 'border-slate-900 dark:border-white text-slate-900 dark:text-white font-bold' : 'border-transparent text-slate-400 dark:text-slate-400'}`}>Reading Journey</button>
-            <button onClick={() => setActiveTab('productivity')} className={`pb-1 border-b-2 transition ${activeTab === 'productivity' ? 'border-slate-900 dark:border-white text-slate-900 dark:text-white font-bold' : 'border-transparent text-slate-400 dark:text-slate-400'}`}>Core Productivity Hub</button>
-          </div>
-
-          <div className="hidden md:flex items-center gap-3">
+        {/* Quick mood */}
+        <div className="mt-4 flex flex-wrap items-center gap-1.5" aria-label="Record your mood">
+          {MOODS.map((mood) => (
             <button
-              onClick={() => setDark((prev) => !prev)}
-              title="Toggle dark mode"
-              className="text-sm text-slate-400 hover:text-slate-900 dark:hover:text-white transition"
+              key={mood.label}
+              onClick={() => recordMood(mood.label)}
+              title={mood.label}
+              className="rounded-full border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-500 transition hover:scale-105 hover:border-emerald-400 hover:text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:text-white"
             >
-              {dark ? '☀️' : '🌙'}
+              {mood.emoji} {mood.label}
             </button>
-            <button onClick={handleExport} title="Export all data as JSON" className="text-xs font-bold text-slate-400 hover:text-slate-900 dark:hover:text-white transition">
-              ⬇ Export
-            </button>
-            {deferredInstallPrompt && (
-              <button onClick={handleInstall} title="Install ZenJournal as an app" className="text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:text-emerald-500 transition">
-                📲 Install
-              </button>
-            )}
-            {isGuest ? (
-              <button onClick={() => setAuthOpen(true)} className="text-xs bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3 py-1.5 rounded-full transition">
-                Sign up to sync
-              </button>
-            ) : (
-              <>
-                <span className="text-xs text-slate-400 bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-full font-medium">Hi, {userName}</span>
-                <button onClick={handleLogout} className="text-xs font-bold text-red-500 hover:text-red-600">Sign Out</button>
-              </>
-            )}
+          ))}
+          {moodSaved && (
+            <span className="ml-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">Recorded ✓</span>
+          )}
+        </div>
+      </section>
+
+      {/* Today's Intention */}
+      <Card className="p-5 sm:p-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="lg:flex-1">
+            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-amber-600 dark:text-amber-400">Today&apos;s Intention</p>
+            <input
+              value={intentionText}
+              onChange={(e) => setIntentionText(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && saveTodayIntention()}
+              placeholder="What would make today meaningful?"
+              className="mt-3 w-full border-b-2 border-slate-100 bg-transparent pb-2 text-lg font-semibold text-slate-900 outline-none transition focus:border-emerald-500 dark:border-slate-800 dark:text-slate-100"
+              aria-label="Today&apos;s intention"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <select
+              value={desiredState}
+              onChange={(e) => setDesiredState(e.target.value)}
+              aria-label="Desired emotional state"
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 outline-none focus:border-emerald-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+            >
+              <option value="">Desired state…</option>
+              {['Calm', 'Focused', 'Grateful', 'Courageous', 'Energized', 'Patient'].map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+            <Button onClick={saveTodayIntention} disabled={!intentionText.trim()}>
+              Save intention
+            </Button>
           </div>
         </div>
-      </nav>
+        {intention && (
+          <p className="mt-3 text-xs text-slate-400">
+            {friendlyDate(new Date().toISOString())} intention
+            {intention.desiredState ? ` · feeling ${intention.desiredState}` : ''}
+          </p>
+        )}
+      </Card>
 
-      <main className="max-w-6xl mx-auto px-4 py-6 sm:py-10">
-        {isGuest && (
-          <div className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-bold text-emerald-900">Guest mode • everything works on this device</p>
-              <p className="text-xs text-emerald-800/80 mt-0.5">Create a free account to sync your data online and unlock AI insights.</p>
-            </div>
-            <button onClick={() => setAuthOpen(true)} className="shrink-0 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-500 transition">
-              Create free account
-            </button>
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <Stat label="Reflections" value={entries.length} icon="✎" />
+        <Stat label="Current streak" value={`${streak}d`} icon="🌱" accentClass="text-emerald-600 dark:text-emerald-400" />
+        <Stat label="This week" value={thisWeekCount} icon="◔" />
+        <Stat label="This month" value={thisMonthCount} icon="◉" />
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* Today's progress */}
+        <Card className="p-5 sm:p-6">
+          <h2 className="text-base font-bold">Today&apos;s progress</h2>
+          <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">A quiet snapshot of your momentum.</p>
+          <dl className="space-y-3 text-sm">
+            <ProgressRow label="Tasks" value={`${completedTasks} done · ${remainingTasks} remaining`} fraction={todos.length ? completedTasks / todos.length : 0} />
+            <ProgressRow label="Goals" value={`${activeGoals} active · ${completedGoals} completed`} fraction={goals.length ? completedGoals / goals.length : 0} />
+            <ProgressRow label="Journal" value={journalStatusText} fraction={todayJournaled ? 1 : entries.length ? 0.5 : 0} />
+            <ProgressRow label="Reading" value={`${activeBooks} in progress`} fraction={0} />
+          </dl>
+        </Card>
+
+        {/* Streak + week */}
+        <Card className="p-5 sm:p-6">
+          <h2 className="text-base font-bold">Reflection rhythm</h2>
+          <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">Showing up for yourself, one entry at a time.</p>
+          <ReflectionWeek entries={entries} />
+          <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+            <MiniStat label="Streak" value={`${streak}d`} />
+            <MiniStat label="This week" value={thisWeekCount} />
+            <MiniStat label="This month" value={thisMonthCount} />
           </div>
-        )}
+        </Card>
+      </div>
 
-        {/* VIEW 1: REFLECTIONS */}
-        {activeTab === 'journal' && (
-          <JournalView
-            dailyFuel={dailyFuel}
-            entries={entries}
-            journalTitle={journalTitle}
-            journalContent={journalContent}
-            journalMood={journalMood}
-            onSubmitJournalEntry={submitJournalEntry}
-            onDeleteJournalEntry={deleteJournalEntry}
-            onJournalTitleChange={setJournalTitle}
-            onJournalContentChange={setJournalContent}
-            onJournalMoodChange={setJournalMood}
-          />
-        )}
-
-        {/* VIEW 2: TODO LIST & STOPWATCH */}
-        {activeTab === 'todos' && (
-          <TodosView
-            todos={todos}
-            trackingTodoId={trackingTodoId}
-            secondsElapsed={secondsElapsed}
-            todoTask={todoTask}
-            onTodoTaskChange={setTodoTask}
-            onSubmitTodo={submitTodo}
-            onToggleTodoStatus={toggleTodoStatus}
-            onStartTracking={startTracking}
-            onStopTrackingTime={stopTrackingTime}
-            onDeleteTodo={deleteTodo}
-          />
-        )}
-
-        {/* VIEW 3: INTENTIONAL HORIZONS (GOALS ENGINE) */}
-        {activeTab === 'goals' && (
-          <GoalsView />
-        )}
-
-        {/* VIEW 4: READING JOURNEY */}
-        {activeTab === 'reading' && (
-          <div className="space-y-6">
-            <div className="rounded-3xl border border-amber-200 bg-linear-to-br from-amber-50 via-white to-slate-50 dark:from-slate-900 dark:via-slate-900 dark:to-slate-900 dark:border-amber-500/20 p-6 sm:p-8 shadow-sm">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                <div>
-                  <span className="inline-flex items-center gap-2 rounded-full border border-amber-300 bg-amber-100 dark:bg-amber-500/10 dark:border-amber-500/30 px-3 py-1 text-[10px] font-black uppercase tracking-[0.3em] text-amber-700 dark:text-amber-400">
-                    <span>📚</span> Reading Journey
-                  </span>
-                  <h3 className="mt-3 text-2xl sm:text-3xl font-black tracking-tight">Track the books you are reading and your progress over time.</h3>
-                  <p className="mt-2 max-w-2xl text-sm sm:text-base text-slate-600 dark:text-slate-300 leading-relaxed">
-                    Add a book, note what stands out, and keep your reading momentum visible alongside the rest of your life system.
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-3 text-sm text-slate-600 dark:text-slate-300 shadow-sm">
-                  <p className="text-[10px] uppercase tracking-[0.3em] text-slate-400">Current focus</p>
-                  <p className="mt-1 font-semibold text-slate-900 dark:text-white">{activeBookTitle}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm p-5 sm:p-6">
-              <ReadingTracker onActiveBookChange={setActiveBookTitle} />
-            </div>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* Recent reflection */}
+        <Card className="flex flex-col p-5 sm:p-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-bold">Recent reflection</h2>
+            <Link href="/journal" className="text-xs font-bold text-emerald-600 hover:underline dark:text-emerald-400">
+              View journal →
+            </Link>
           </div>
-        )}
-
-        {/* VIEW 5: CORE PRODUCTIVITY HUB */}
-        {activeTab === 'productivity' && (
-          <ProductivityHubView
-            analytics={analytics}
-            aiReport={aiReport}
-            isAiLoading={isAiLoading}
-            todos={todos}
-            timeRange={timeRange}
-            calendarCells={calendarCells}
-            dailyFuelFocusTag={dailyFuel?.focusTag}
-            isGuest={isGuest}
-            onTimeRangeChange={setTimeRange}
-            onRefreshAiReport={fetchAiReport}
-          />
-        )}
-      </main>
-
-      <footer className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 px-6 py-2 flex justify-between items-center z-40 shadow-lg">
-        <button onClick={() => setActiveTab('journal')} className={`flex flex-col items-center gap-0.5 text-xs font-medium transition ${activeTab === 'journal' ? 'text-slate-900 dark:text-white font-bold' : 'text-slate-400'}`}>
-          <span>🍃</span>
-          <span>Log</span>
-        </button>
-        <button onClick={() => setActiveTab('todos')} className={`flex flex-col items-center gap-0.5 text-xs font-medium transition ${activeTab === 'todos' ? 'text-slate-900 dark:text-white font-bold' : 'text-slate-400'}`}>
-          <span>⏱️</span>
-          <span>Tasks</span>
-        </button>
-        <button onClick={() => setActiveTab('reading')} className={`flex flex-col items-center gap-0.5 text-xs font-medium transition ${activeTab === 'reading' ? 'text-slate-900 dark:text-white font-bold' : 'text-slate-400'}`}>
-          <span>📚</span>
-          <span>Reading</span>
-        </button>
-        <button onClick={() => setActiveTab('productivity')} className={`flex flex-col items-center gap-0.5 text-xs font-medium transition ${activeTab === 'productivity' ? 'text-slate-900 dark:text-white font-bold' : 'text-slate-400'}`}>
-          <span>🧠</span>
-          <span>Hub</span>
-        </button>
-        <button onClick={() => setActiveTab('goals')} className={`flex flex-col items-center gap-0.5 text-xs font-medium transition ${activeTab === 'goals' ? 'text-slate-900 dark:text-white font-bold' : 'text-slate-400'}`}>
-          <span>🎯</span>
-          <span>Goals</span>
-        </button>
-      </footer>
-
-      {authOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center px-4 py-8">
-          <div className="bg-white dark:bg-slate-900 p-6 sm:p-8 rounded-2xl shadow-xl border border-slate-100 dark:border-slate-800 max-w-md w-full">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-black text-slate-900 dark:text-white">ZenJournal</h2>
-              <button onClick={() => setAuthOpen(false)} className="text-slate-400 hover:text-slate-700 dark:hover:text-white text-xl leading-none">✕</button>
-            </div>
-            <p className="text-center text-sm text-slate-400 mb-6">
-              {isLoginView ? 'Welcome back — sync your sanctuary across devices.' : 'Sync your guest data and unlock AI insights.'}
-            </p>
-
-            <form onSubmit={handleAuth} className="space-y-4">
-              {!isLoginView && (
-                <div>
-                  <label className="text-xs font-bold uppercase text-slate-400 tracking-wider">Full Name</label>
-                  <input type="text" required value={authName} onChange={(e) => setAuthName(e.target.value)} className="w-full mt-1 px-4 py-2.5 border rounded-xl focus:ring-2 focus:ring-slate-900 outline-none text-sm" placeholder="Mtoo Nurdini" />
-                </div>
-              )}
-              <div>
-                <label className="text-xs font-bold uppercase text-slate-400 tracking-wider">Email Address</label>
-                <input type="email" required value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} className="w-full mt-1 px-4 py-2.5 border rounded-xl focus:ring-2 focus:ring-slate-900 outline-none text-sm" placeholder="name@domain.com" />
+          {recentEntry ? (
+            <div className="mt-4 flex flex-1 flex-col">
+              <div className="flex items-center gap-2">
+                <Badge color="emerald">{moodEmoji(recentEntry.mood)} {recentEntry.mood || 'Unspoken'}</Badge>
+                <time className="text-xs text-slate-400">{friendlyDate(recentEntry.createdAt)}</time>
               </div>
-              <div>
-                <label className="text-xs font-bold uppercase text-slate-400 tracking-wider">Password</label>
-                <input type="password" required value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} className="w-full mt-1 px-4 py-2.5 border rounded-xl focus:ring-2 focus:ring-slate-900 outline-none text-sm" placeholder="••••••••" />
-              </div>
-              <button type="submit" disabled={authLoading} className="w-full bg-slate-900 dark:bg-slate-100 dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-white text-white font-medium py-3 rounded-xl transition text-sm shadow-sm mt-2 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2">
-                {authLoading ? (
-                  <>
-                    <span className="h-4 w-4 border-2 border-white/30 border-t-white dark:border-slate-900/30 dark:border-t-slate-900 rounded-full animate-spin" />
-                    {isLoginView ? 'Signing in...' : 'Creating account...'}
-                  </>
-                ) : (
-                  isLoginView ? 'Sign In to Hub' : 'Create Account'
-                )}
-              </button>
-            </form>
-
-            <div className="text-center mt-6">
-              <button onClick={() => setIsLoginView(!isLoginView)} className="text-xs font-semibold text-slate-500 hover:underline">
-                {isLoginView ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}
-              </button>
+              <h3 className="mt-3 text-lg font-bold text-slate-900 dark:text-slate-100">{recentEntry.title}</h3>
+              <p className="mt-1 line-clamp-3 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+                {recentEntry.content || '—'}
+              </p>
+              <Button variant="secondary" size="sm" className="mt-4 w-fit" onClick={() => router.push('/journal')}>
+                Open reflection
+              </Button>
             </div>
+          ) : (
+            <EmptyState
+              title="Your journey starts here."
+              message="Write your first reflection and begin building your personal timeline."
+              action={<Button onClick={() => router.push('/journal?mode=write')}>Write reflection</Button>}
+            />
+          )}
+        </Card>
+
+        {/* Personal growth snapshot */}
+        <Card className="flex flex-col p-5 sm:p-6">
+          <h2 className="text-base font-bold">Personal growth snapshot</h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400">Where things stand across your focus.</p>
+          <div className="mt-4 flex-1 space-y-3 text-sm">
+            <SnapshotLink href="/goals" label="Active goals" value={activeGoals > 0 ? `${activeGoals} in motion` : 'None yet'} icon="◎" />
+            <SnapshotLink href="/goals" label="Completed goals" value={`${completedGoals} reached`} icon="★" />
+            <SnapshotLink href="/reading" label="Current reading" value={activeBooks > 0 ? `${activeBooks} book${activeBooks > 1 ? 's' : ''} in progress` : 'None yet'} icon="📖" />
+            <SnapshotLink href="/insights" label="Insights" value="Mood & patterns are waiting" icon="◔" />
           </div>
+          {isGuest && (
+            <Button variant="soft" className="mt-4" full onClick={() => setShowAuthModal(true)}>
+              Create a free account to sync & unlock AI insights
+            </Button>
+          )}
+        </Card>
+      </div>
+
+      {/* Tags quick links */}
+      {(entries.length > 5 || true) && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Jump to:</span>
+          <Link href="/journal"><TagChip label="All reflections" /></Link>
+          <Link href="/journal?fav=1"><TagChip label="★ Important" /></Link>
+          <Link href="/journal?search=1"><TagChip label="Search" /></Link>
         </div>
       )}
+    </div>
+  );
+}
+
+function ProgressRow({ label, value, fraction }: { label: string; value: string; fraction: number }) {
+  return (
+    <div>
+      <div className="flex items-center justify-between">
+        <dt className="font-semibold text-slate-700 dark:text-slate-200">{label}</dt>
+        <dd className="text-xs text-slate-400">{value}</dd>
+      </div>
+      <ProgressBar value={fraction * 100} className="mt-1.5" />
+    </div>
+  );
+}
+
+function MiniStat({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="rounded-xl bg-slate-50 px-2 py-2.5 dark:bg-slate-800">
+      <p className="text-lg font-black text-slate-900 dark:text-white">{value}</p>
+      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</p>
+    </div>
+  );
+}
+
+function SnapshotLink({ href, label, value, icon }: { href: string; label: string; value: string; icon: string }) {
+  return (
+    <Link href={href} className="flex items-center justify-between rounded-xl border border-slate-100 px-3 py-2.5 transition hover:border-emerald-200 hover:bg-emerald-50/40 dark:border-slate-800 dark:hover:border-emerald-500/30 dark:hover:bg-emerald-500/5">
+      <span className="flex items-center gap-2.5 font-medium text-slate-700 dark:text-slate-200">
+        <span aria-hidden>{icon}</span> {label}
+      </span>
+      <span className="text-xs text-slate-400">{value} →</span>
+    </Link>
+  );
+}
+
+function ReflectionWeek({ entries }: { entries: Array<{ createdAt: string }> }) {
+  const days = useMemo(() => {
+    const result: Array<{ key: string; label: string; day: string; journaled: boolean }> = [];
+    const cursor = new Date();
+    cursor.setHours(0, 0, 0, 0);
+    const journaled = new Set(entries.map((e) => {
+      const d = new Date(e.createdAt);
+      return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+    }));
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(cursor);
+      d.setDate(cursor.getDate() - i);
+      const key = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+      result.push({
+        key,
+        label: d.toLocaleDateString(undefined, { weekday: 'short' }),
+        day: String(d.getDate()),
+        journaled: journaled.has(key),
+      });
+    }
+    return result;
+  }, [entries]);
+
+  return (
+    <div className="grid grid-cols-7 gap-1.5">
+      {days.map((d) => (
+        <div key={d.key} className="flex flex-col items-center gap-1">
+          <span className="text-[10px] font-bold uppercase text-slate-400">{d.label}</span>
+          <span
+            className={`grid h-9 w-9 place-items-center rounded-full text-sm font-bold ${
+              d.journaled
+                ? 'bg-emerald-500 text-white'
+                : 'bg-slate-100 text-slate-400 dark:bg-slate-800'
+            }`}
+          >
+            {d.journaled ? '✓' : d.day}
+          </span>
+        </div>
+      ))}
     </div>
   );
 }

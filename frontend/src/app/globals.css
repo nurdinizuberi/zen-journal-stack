@@ -3,9 +3,18 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+@theme {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
 body {
-  background-color: #f8fafc; /* A soft slate-50 background */
-  color: #0f172a;            /* Dark slate text */
+  background-color: #f8fafc;
+  color: #0f172a;
   transition: background-color 0.2s ease, color 0.2s ease;
 }
 
@@ -13,4 +22,27 @@ body {
 html.dark body {
   background-color: #020617;
   color: #e2e8f0;
+}
+
+::selection {
+  background-color: rgba(16, 185, 129, 0.25);
+}
+
+/* Visible focus states for keyboard users */
+:focus-visible {
+  outline: 2px solid rgba(16, 185, 129, 0.7);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Calm, quiet motion. Respect reduced-motion preferences. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

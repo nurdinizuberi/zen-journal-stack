@@ -1,7 +1,7 @@
 {
-  "name": "ZenJournal Suite",
+  "name": "ZenJournal",
   "short_name": "ZenJournal",
-  "description": "Reflections, tasks, goals, reading and productivity habits in one focus sanctuary.",
+  "description": "A personal growth system that turns reflection into meaningful action.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

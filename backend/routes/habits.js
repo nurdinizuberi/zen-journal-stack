@@ -1,11 +1,10 @@
 // backend/routes/habits.js
 
 import express from 'express';
-import { PrismaClient } from '@prisma/client';
 import authMiddleware from '../auth.js'; // Ensure .js extension matches your setup
+import { prisma } from '../db.js';
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
 router.use(authMiddleware);
 

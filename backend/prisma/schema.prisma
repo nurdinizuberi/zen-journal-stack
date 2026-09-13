@@ -19,19 +19,26 @@ model User {
   goals         Goal[]
   habit         Habit[]
   readingBooks  ReadingBook[]
+  intentions    DailyIntention[]
   createdAt     DateTime       @default(now())
 }
 
 model JournalEntry {
-  id              String   @id @default(uuid())
-  title           String
-  content         String
-  mood            String
-  createdAt       DateTime @default(now())
-  userId          String
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id          String   @id @default(uuid())
+  title       String
+  content     String
+  mood        String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // Ensure these are exact lowercase characters
+  // Optional enrichment
+  tags        Json?    @default("[]")   // ["#career", "#learning"]
+  lifeArea    String?                   // "Career", "Learning", ...
+  isFavorite  Boolean  @default(false)
+
+  // Existing voice/attachment support
   voiceTranscript String?  @default("")
   attachments     Json?
 }
@@ -46,6 +53,15 @@ model Todo {
   updatedAt   DateTime @updatedAt
   userId      String
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Optional enrichment
+  goalId      String?
+  goal        Goal?    @relation(fields: [goalId], references: [id], onDelete: SetNull)
+  priority    String   @default("medium") // high | medium | low
+  lifeArea    String?
+  notes       String   @default("")
+
+  @@index([userId])
 }
 
 model Goal {
@@ -53,10 +69,20 @@ model Goal {
   userId      String
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   title       String
-  timeframe   String // "daily", "weekly", "monthly", "yearly"
+  description String   @default("")
+  whyItMatters String  @default("")
+  lifeArea    String?
+  timeframe   String   @default("monthly") // "daily", "weekly", "monthly", "yearly"
+  targetDate  DateTime?
+  progress    Int      @default(0)       // 0-100
+  milestones  Json?    @default("[]")   // [{id,title,completed}]
   isCompleted Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  todos       Todo[]
+  books       ReadingBook[]
+
+  @@index([userId])
 }
 
 model ReadingBook {
@@ -67,11 +93,34 @@ model ReadingBook {
   currentPage Int      @default(0)
   notes       String   @default("")
   completed   Boolean  @default(false)
+  status      String   @default("reading") // reading | completed | paused | wishlist
+  startDate   DateTime?
+  completedDate DateTime?
+  keyIdeas    String   @default("")
+  reflection  String   @default("")
+  goalId      String?
+  goal        Goal?    @relation(fields: [goalId], references: [id], onDelete: SetNull)
+  lifeArea    String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   userId      String
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId])
+}
+
+model DailyIntention {
+  id           String   @id @default(uuid())
+  date         DateTime
+  intention    String
+  priority     String?
+  desiredState String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
   @@index([userId])
 }
 
