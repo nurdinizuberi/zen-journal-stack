@@ -4,6 +4,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 
@@ -63,7 +64,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       {/* Desktop sidebar */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-slate-100 bg-white px-4 py-6 md:flex dark:border-slate-800 dark:bg-slate-900">
         <Link href="/" className="mb-8 flex items-center gap-2 px-2">
-          <span className="grid h-8 w-8 place-items-center rounded-xl bg-emerald-500 text-lg font-black text-white">Z</span>
+          <Image src="/zen-journal.png" alt="ZenJournal" width={32} height={32} className="h-8 w-8 rounded-xl object-cover" />
           <span className="text-lg font-black tracking-tight">ZenJournal</span>
         </Link>
 
@@ -117,7 +118,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <header className="sticky top-0 z-30 border-b border-slate-100 bg-white/90 backdrop-blur dark:border-slate-800 dark:bg-slate-900/90">
           <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
             <Link href="/" className="flex items-center gap-2 md:hidden">
-              <span className="grid h-7 w-7 place-items-center rounded-lg bg-emerald-500 text-sm font-black text-white">Z</span>
+              <Image src="/zen-journal.png" alt="ZenJournal" width={28} height={28} className="h-7 w-7 rounded-lg object-cover" />
               <span className="font-black tracking-tight">ZenJournal</span>
             </Link>
             <div className="hidden md:flex md:items-center md:gap-3" />

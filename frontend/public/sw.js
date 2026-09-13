@@ -1,5 +1,5 @@
 const CACHE_NAME = 'zenjournal-v1';
-const APP_SHELL = ['/', '/manifest.json', '/icon-192.png', '/icon-512.png'];
+const APP_SHELL = ['/', '/manifest.json', '/icon-192.png', '/icon-512.png', '/zen-journal.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

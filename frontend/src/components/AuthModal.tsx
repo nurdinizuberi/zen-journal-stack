@@ -3,6 +3,7 @@
 'use client';
 
 import { useState } from 'react';
+import Image from 'next/image';
 import { useApp } from '@/context/AppContext';
 import { Button, Input, Modal } from '@/components/ui';
 
@@ -30,7 +31,16 @@ export default function AuthModal() {
   };
 
   return (
-    <Modal open={showAuthModal} onClose={close} title="ZenJournal">
+    <Modal
+      open={showAuthModal}
+      onClose={close}
+      title={
+        <span className="flex items-center gap-2">
+          <Image src="/zen-journal.png" alt="" width={28} height={28} className="h-7 w-7 rounded-lg object-cover" />
+          ZenJournal
+        </span>
+      }
+    >
       <p className="mb-6 text-center text-sm text-slate-400">
         {isLogin
           ? 'Welcome back. Pick up where you left off.'
