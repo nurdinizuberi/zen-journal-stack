@@ -39,7 +39,7 @@ router.get('/prefs', async (req, res) => {
   }
 });
 
-router.put('/prefs', async (req, res) => {
+async function updatePrefs(req, res) {
   const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Authentication required.' });
 
@@ -62,7 +62,10 @@ router.put('/prefs', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: 'Failed to save notification preferences.' });
   }
-});
+}
+
+router.put('/prefs', updatePrefs);
+router.patch('/prefs', updatePrefs);
 
 router.post('/subscribe', async (req, res) => {
   const userId = getUserId(req);
