@@ -1,3 +1,4 @@
+import 'dotenv/config'; // load backend/.env so VAPID_*, JWT_SECRET, DATABASE_URL are available when run directly
 import express from 'express';
 import cors from 'cors';
 import jwt from 'jwt-simple';

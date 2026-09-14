@@ -110,7 +110,9 @@ router.post('/unsubscribe', async (req, res) => {
 router.post('/test', async (req, res) => {
   const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Authentication required.' });
-  if (!canPush()) return res.status(503).json({ error: 'Web Push is not configured on the server yet.' });
+  if (!canPush()) {
+    return res.status(503).json({ error: 'Web Push is not configured on the server yet (missing VAPID keys).' });
+  }
 
   try {
     const sent = await sendToUser(userId, {
@@ -118,9 +120,15 @@ router.post('/test', async (req, res) => {
       body: 'Your notifications are working. Calm, clear, ready.',
       url: '/today',
     });
-    if (!sent) return res.status(404).json({ error: 'No active subscription on this account yet.' });
+    if (!sent) {
+      return res.status(404).json({ error: 'No push subscription found for this account. Re-enable notifications in Settings, then try again.' });
+    }
     res.json({ ok: true, sent });
   } catch (err) {
+    console.error('[notifications] test push failed:', err?.message || err);
+    if (err?.statusCode) {
+      return res.status(502).json({ error: `Push service rejected the notification (HTTP ${err.statusCode}). Re-enable notifications to refresh your subscription.` });
+    }
     res.status(500).json({ error: 'Failed to send test notification.' });
   }
 });

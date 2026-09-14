@@ -227,7 +227,7 @@ function PrivacyRow({ label, value }: { label: string; value: string }) {
 
 function NotificationCard({ isGuest, setShowAuthModal }: { isGuest: boolean; setShowAuthModal: (v: boolean) => void }) {
   const notifications = useNotifications();
-  const { permission, prefs, loading, syncing, testSending } = notifications;
+  const { permission, prefs, loading, syncing, testSending, testMessage } = notifications;
 
   if (isGuest) {
     return (
@@ -329,9 +329,16 @@ function NotificationCard({ isGuest, setShowAuthModal }: { isGuest: boolean; set
                 , or tap a task&apos;s bell.
               </p>
             </div>
+          <div className="flex flex-col items-end gap-1">
             <Button variant="secondary" size="sm" onClick={() => notifications.sendTest()} disabled={testSending}>
               {testSending ? 'Sending…' : 'Send test'}
             </Button>
+            {testMessage && (
+              <p className={`max-w-56 text-right text-xs ${testMessage.ok ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                {testMessage.message}
+              </p>
+            )}
+          </div>
           </div>
           <p className="text-xs text-slate-400">
             Your timezone ({prefs?.timezone || 'detecting…'}) is used to time reminders perfectly. Reminders arrive

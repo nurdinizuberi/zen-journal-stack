@@ -36,12 +36,34 @@ export async function fetchVapidPublicKey(): Promise<string | null> {
 
 async function ensureServiceWorkerRegistration(): Promise<ServiceWorkerRegistration | null> {
   try {
-    const existing = await navigator.serviceWorker.getRegistration('/');
-    if (existing) return existing;
-    return navigator.serviceWorker.ready;
+    // Register if needed, then wait until the SW is actually active. On the very
+    // first visit, ready can stay pending until the page regains focus — the
+    // waiting event resolves that case in Chrome.
+    let reg = await navigator.serviceWorker.getRegistration('/');
+    if (!reg) {
+      reg = await navigator.serviceWorker.register('/sw.js');
+    }
+    if (reg && !reg.active) {
+      await new Promise<void>((resolve) => {
+        const done = () => resolve();
+        if (reg!.active) return done();
+        reg!.addEventListener('activate', done, { once: true });
+        if ('waiting' in navigator.serviceWorker) {
+          navigator.serviceWorker.addEventListener('waiting', done, { once: true });
+        }
+        setTimeout(done, 5000);
+      });
+    }
+    return reg || (await navigator.serviceWorker.ready);
   } catch {
     return null;
   }
+}
+
+function sameKey(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (!a || !b) return false;
+  const norm = (s: string) => s.replace(/-/g, '+').replace(/_/g, '/').replace(/=+$/, '');
+  return norm(a) === norm(b);
 }
 
 export async function getOrCreateSubscription(): Promise<PushSubscription | null> {
@@ -50,6 +72,32 @@ export async function getOrCreateSubscription(): Promise<PushSubscription | null
     const reg = await ensureServiceWorkerRegistration();
     if (!reg) return null;
     let sub = await reg.pushManager.getSubscription();
+    if (sub) {
+      // If the server's VAPID key changed (e.g. re-deploy), the old subscription
+      // can never receive pushes. Detect it and resubscribe once.
+      const key = await fetchVapidPublicKey();
+      const appServerKey = sub.options.applicationServerKey;
+      let currentKey: string | null = null;
+      try {
+        const bytes: Uint8Array | null =
+          typeof appServerKey === 'string'
+            ? urlBase64ToUint8Array(appServerKey)
+            : appServerKey instanceof Uint8Array
+              ? new Uint8Array(appServerKey)
+              : null;
+        if (bytes && bytes.length) {
+          let binary = '';
+          for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
+          currentKey = btoa(binary);
+        }
+      } catch {
+        currentKey = null;
+      }
+      if (key && !sameKey(currentKey, key)) {
+        await sub.unsubscribe().catch(() => {});
+        sub = null;
+      }
+    }
     if (!sub) {
       const key = await fetchVapidPublicKey();
       if (!key) return null;
@@ -88,6 +136,8 @@ export async function syncPushSubscription(token: string | null): Promise<boolea
 
 export async function requestNotificationPermission(): Promise<NotificationPermission> {
   if (!notificationsSupported()) return 'denied';
+  // Must run directly in the user-gesture call stack: awaiting anything first
+  // (an API fetch, a SW lookup) makes the browser drop the prompt silently.
   return Notification.requestPermission();
 }
 

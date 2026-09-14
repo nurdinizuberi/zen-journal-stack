@@ -1,7 +1,7 @@
 // src/hooks/useNotifications.ts — Notification Center state for Settings + task reminders
 // Never asks for permission on load. Everything here is triggered by an explicit user action.
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { apiGet, apiPatch, apiPost } from '@/lib/api';
 import { NotificationPrefs } from '@/types';
 import {
@@ -24,6 +24,8 @@ export function useNotifications() {
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [testSending, setTestSending] = useState(false);
+  const [testMessage, setTestMessage] = useState<{ ok: boolean; message: string } | null>(null);
+  const resynced = useRef(false);
 
   const refreshPermission = useCallback(() => {
     if (!notificationsSupported()) {
@@ -59,8 +61,20 @@ export function useNotifications() {
     refresh();
   }, [refresh]);
 
+  // Re-sync the push subscription on load. Covers: permission granted while
+  // signed out, a subscription the server lost, or a VAPID key change on the
+  // server (getOrCreateSubscription resubscribes in that case).
+  useEffect(() => {
+    if (!token || resynced.current) return;
+    if (!notificationsSupported() || Notification.permission !== 'granted') return;
+    resynced.current = true;
+    syncPushSubscription(token);
+  }, [token]);
+
   const requestPermission = useCallback(async () => {
     if (!supported) return false;
+    // requestNotificationPermission fires the browser prompt synchronously,
+    // inside the user gesture — awaiting anything before it voids the prompt.
     const result = await requestNotificationPermission();
     setPermission(result);
     if (result === 'granted') {
@@ -111,13 +125,18 @@ export function useNotifications() {
   const sendTest = useCallback(async () => {
     if (!token) return { ok: false, message: 'Sign in to send a test notification.' };
     setTestSending(true);
+    setTestMessage(null);
     try {
       const res = await apiPost<{ ok: boolean; error?: string }>('/notifications/test', {}, token);
-      setTestSending(false);
-      return { ok: res.ok, message: res.error || '' };
+      const msg = { ok: true, message: 'Test notification sent — check your device 🔔' };
+      setTestMessage(msg);
+      return msg;
     } catch (e) {
+      const msg = { ok: false, message: e instanceof Error ? e.message : 'Could not send test.' };
+      setTestMessage(msg);
+      return msg;
+    } finally {
       setTestSending(false);
-      return { ok: false, message: e instanceof Error ? e.message : 'Could not send test.' };
     }
   }, [token]);
 
@@ -128,6 +147,7 @@ export function useNotifications() {
     loading,
     syncing,
     testSending,
+    testMessage,
     refresh,
     requestPermission,
     enable,
