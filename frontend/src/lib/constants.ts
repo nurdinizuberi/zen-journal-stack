@@ -59,6 +59,24 @@ export function moodEmoji(mood: string): string {
   return EMOJI_BY_MOOD[mood] || '💭';
 }
 
+// Rough 0–100 valence used only for internal pattern comparisons — never shown as a score.
+export const MOOD_VALENCE: Record<string, number> = {
+  Calm: 80,
+  Focused: 75,
+  Grateful: 88,
+  Courageous: 78,
+  Energized: 85,
+  Patient: 70,
+  Anxious: 32,
+  Reflective: 55,
+  Tired: 38,
+  Peaceful: 84,
+};
+
+export function moodValence(mood: string): number {
+  return MOOD_VALENCE[mood] ?? 50;
+}
+
 export function friendlyDate(iso: string): string {
   try {
     const d = new Date(iso);

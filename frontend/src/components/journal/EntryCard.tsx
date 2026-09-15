@@ -3,6 +3,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { Badge } from '@/components/ui';
 import { JournalEntry } from '@/types';
 import { moodEmoji, friendlyDate } from '@/lib/constants';
@@ -82,6 +83,35 @@ export default function EntryCard({ entry, onToggleFavorite, onDelete, onEdit }:
           {entry.tags.map((tag) => (
             <span key={tag} className="text-xs text-slate-400">{tag}</span>
           ))}
+        </div>
+      )}
+
+      {(entry.goal || entry.todo || entry.book) && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {entry.goal && (
+            <Link
+              href="/goals"
+              className="rounded-lg border border-violet-100 bg-violet-50/60 px-3 py-1.5 text-xs font-semibold text-violet-700 transition hover:border-violet-300 hover:bg-violet-100 dark:border-violet-500/20 dark:bg-violet-500/10 dark:text-violet-300"
+            >
+              ◎ {entry.goal.title} →
+            </Link>
+          )}
+          {entry.todo && (
+            <Link
+              href={`/tasks/${entry.todo.id}`}
+              className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+            >
+              ☑ {entry.todo.task} →
+            </Link>
+          )}
+          {entry.book && (
+            <Link
+              href="/reading"
+              className="rounded-lg border border-amber-100 bg-amber-50/60 px-3 py-1.5 text-xs font-semibold text-amber-700 transition hover:border-amber-300 hover:bg-amber-100 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300"
+            >
+              📖 {entry.book.title} →
+            </Link>
+          )}
         </div>
       )}
 

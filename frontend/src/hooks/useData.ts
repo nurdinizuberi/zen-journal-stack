@@ -13,6 +13,7 @@ import {
   AnalyticsData,
 } from '@/types';
 import { startOfDay } from '@/lib/time';
+import { buildAdvancedInsights } from '@/lib/insights';
 
 function getToken(): string | null {
   if (typeof window === 'undefined') return null;
@@ -61,6 +62,9 @@ export function useEntries() {
       lifeArea?: string | null;
       isFavorite?: boolean;
       createdAt?: string;
+      goalId?: string | null;
+      todoId?: string | null;
+      bookId?: string | null;
     }) => {
       const token = getToken();
       if (!token) {
@@ -73,6 +77,9 @@ export function useEntries() {
           tags: input.tags || [],
           lifeArea: input.lifeArea || null,
           isFavorite: Boolean(input.isFavorite),
+          goalId: input.goalId || null,
+          todoId: input.todoId || null,
+          bookId: input.bookId || null,
         };
         saveLocalEntries([newEntry, ...entries]);
         return newEntry;
@@ -87,6 +94,9 @@ export function useEntries() {
           lifeArea: input.lifeArea || null,
           isFavorite: Boolean(input.isFavorite),
           createdAt: input.createdAt,
+          goalId: input.goalId || null,
+          todoId: input.todoId || null,
+          bookId: input.bookId || null,
         },
         token
       );
@@ -223,7 +233,7 @@ export function useTodos() {
     async (id: string, patch: Partial<Todo>) => {
       const token = getToken();
       if (!token) {
-        const next = todos.map((t) => (t.id === id ? { ...t, ...patch } : t));
+        const next = todos.map((t) => (t.id === id ? { ...t, ...patch, updatedAt: new Date().toISOString() } : t));
         saveLocalTodos(next);
         return;
       }
@@ -459,7 +469,9 @@ export function useIntention() {
     }
     try {
       const data = await apiGet<DailyIntention[]>('/intentions', token);
-      setIntention(data[0] || null);
+      const today =
+        data.find((i) => startOfDay(new Date(i.date)).getTime() === startOfDay().getTime()) || null;
+      setIntention(today);
     } catch {
       setIntention(null);
     } finally {
@@ -516,6 +528,9 @@ function buildLocalInsights(): InsightData {
   const todos = loadLocal<Todo[]>('zen_todos', []);
   const goals = loadLocal<Goal[]>('zen_goals', []);
   const books = loadLocal<ReadingBook[]>('zen_books', []);
+  const intentions = loadLocal<DailyIntention[]>('zen_intentions', []);
+
+  const advanced = buildAdvancedInsights({ entries, todos, goals, books, intentions });
 
   const moodAll: Record<string, number> = {};
   const moodByWeek: Record<string, number> = {};
@@ -563,8 +578,15 @@ function buildLocalInsights(): InsightData {
     moodDistribution: moodAll,
     moodByWeek,
     moodByMonth,
+    moodDeltas: advanced.moodDeltas,
     topics,
     booksReading: books.filter((b) => b.status === 'reading').length,
+    observations: advanced.observations,
+    longestStreak: advanced.longestStreak,
+    dayOfWeek: advanced.dayOfWeek,
+    hourBuckets: advanced.hourBuckets,
+    intentionComparison: advanced.intentionComparison,
+    themeMoods: advanced.themeMoods,
   };
 }
 

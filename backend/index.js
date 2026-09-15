@@ -11,6 +11,7 @@ import { GoogleGenAI } from '@google/genai';
 import habitRoutes from './routes/habits.js';
 import notificationRoutes from './routes/notifications.js';
 import { prisma } from './db.js';
+import { computeAdvanced } from './services/insights.js';
 import { initNotifier, startScheduler } from './services/notifier.js';
 
 // ==========================================
@@ -146,7 +147,12 @@ app.get('/api/entries', authenticateToken, async (req, res) => {
 
     let entries = await prisma.journalEntry.findMany({
       where,
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'desc' },
+      include: {
+        goal: { select: { id: true, title: true } },
+        todo: { select: { id: true, task: true } },
+        book: { select: { id: true, title: true, author: true } },
+      }
     });
 
     if (q) {
@@ -166,7 +172,7 @@ app.get('/api/entries', authenticateToken, async (req, res) => {
 
 app.post('/api/entries', authenticateToken, journalUploadMiddleware, async (req, res) => {
   try {
-    const { title, content, mood, tags, lifeArea, isFavorite, createdAt } = req.body;
+    const { title, content, mood, tags, lifeArea, isFavorite, createdAt, goalId, todoId, bookId } = req.body;
 
     const filesArray = req.files && req.files['attachments'] ? req.files['attachments'] : [];
     const attachmentsData = filesArray.map((file) => ({
@@ -193,7 +199,10 @@ app.post('/api/entries', authenticateToken, journalUploadMiddleware, async (req,
         isFavorite: Boolean(isFavorite),
         createdAt: createdAt ? new Date(createdAt) : undefined,
         voiceTranscript: voiceTranscriptData,
-        attachments: attachmentsData
+        attachments: attachmentsData,
+        goalId: goalId || null,
+        todoId: todoId || null,
+        bookId: bookId || null,
       }
     });
 
@@ -212,7 +221,7 @@ app.patch('/api/entries/:id', authenticateToken, async (req, res) => {
     });
     if (!existing) return res.status(404).json({ error: 'Entry not found.' });
 
-    const { title, content, mood, tags, lifeArea, isFavorite } = req.body;
+    const { title, content, mood, tags, lifeArea, isFavorite, goalId, todoId, bookId } = req.body;
     const updated = await prisma.journalEntry.update({
       where: { id: req.params.id },
       data: {
@@ -221,7 +230,10 @@ app.patch('/api/entries/:id', authenticateToken, async (req, res) => {
         mood: mood !== undefined ? mood : existing.mood,
         lifeArea: lifeArea !== undefined ? lifeArea : existing.lifeArea,
         isFavorite: isFavorite !== undefined ? Boolean(isFavorite) : existing.isFavorite,
-        tags: tags !== undefined ? (Array.isArray(tags) ? tags : []) : existing.tags
+        tags: tags !== undefined ? (Array.isArray(tags) ? tags : []) : existing.tags,
+        goalId: goalId !== undefined ? (goalId || null) : existing.goalId,
+        todoId: todoId !== undefined ? (todoId || null) : existing.todoId,
+        bookId: bookId !== undefined ? (bookId || null) : existing.bookId,
       }
     });
     res.json(updated);
@@ -344,7 +356,8 @@ app.get('/api/goals', authenticateToken, async (req, res) => {
       orderBy: { createdAt: 'desc' },
       include: {
         todos: { select: { id: true, task: true, isCompleted: true } },
-        books: { select: { id: true, title: true, status: true } }
+        books: { select: { id: true, title: true, status: true } },
+        entries: { select: { id: true, title: true, mood: true, createdAt: true, content: true } }
       }
     });
     res.json(goals);
@@ -662,11 +675,15 @@ app.get('/api/insights', authenticateToken, async (req, res) => {
     const userId = req.user.userId;
     const entries = await prisma.journalEntry.findMany({
       where: { userId },
-      select: { mood: true, createdAt: true, tags: true, lifeArea: true, id: true }
+      select: {
+        id: true, mood: true, createdAt: true, tags: true, lifeArea: true,
+        content: true, isFavorite: true, goalId: true, bookId: true
+      }
     });
-    const todos = await prisma.todo.findMany({ where: { userId }, select: { isCompleted: true, createdAt: true }, orderBy: { createdAt: 'asc' } });
-    const goals = await prisma.goal.findMany({ where: { userId }, select: { isCompleted: true, createdAt: true, id: true } });
-    const books = await prisma.readingBook.findMany({ where: { userId }, select: { completed: true, status: true, title: true } });
+    const todos = await prisma.todo.findMany({ where: { userId }, select: { isCompleted: true, createdAt: true, updatedAt: true }, orderBy: { createdAt: 'asc' } });
+    const goals = await prisma.goal.findMany({ where: { userId }, select: { isCompleted: true, createdAt: true, id: true, title: true } });
+    const books = await prisma.readingBook.findMany({ where: { userId }, select: { completed: true, status: true, title: true, id: true } });
+    const intentions = await prisma.dailyIntention.findMany({ where: { userId }, select: { date: true } });
 
     // Reflection streak
     const now = new Date();
@@ -712,6 +729,8 @@ app.get('/api/insights', authenticateToken, async (req, res) => {
       }
     }
 
+    const advanced = computeAdvanced(entries, todos, goals, books, intentions);
+
     res.json({
       totals: {
         reflections: entries.length,
@@ -726,8 +745,15 @@ app.get('/api/insights', authenticateToken, async (req, res) => {
       moodDistribution: moodAll,
       moodByWeek,
       moodByMonth,
+      moodDeltas: advanced.moodDeltas,
       topics,
-      booksReading: books.filter((b) => b.status === 'reading').length
+      booksReading: books.filter((b) => b.status === 'reading').length,
+      observations: advanced.observations,
+      longestStreak: advanced.longestStreak,
+      dayOfWeek: advanced.dayOfWeek,
+      hourBuckets: advanced.hourBuckets,
+      intentionComparison: advanced.intentionComparison,
+      themeMoods: advanced.themeMoods
     });
   } catch (error) {
     console.error('Insights error:', error);

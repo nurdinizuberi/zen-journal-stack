@@ -2,11 +2,12 @@
 
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { useBooks, useGoals } from '@/hooks/useData';
+import { useBooks, useGoals, useEntries } from '@/hooks/useData';
 import { Button, Card, EmptyState, Input, Textarea, Select, Badge, ProgressBar, Modal } from '@/components/ui';
-import { LIFE_AREAS, friendlyDate } from '@/lib/constants';
+import { LIFE_AREAS, friendlyDate, moodEmoji } from '@/lib/constants';
 import { ReadingBook } from '@/types';
 
 export default function ReadingPage() {
@@ -23,6 +24,19 @@ function ReadingContent() {
 
   const { books, addBook, updateBook, deleteBook } = useBooks();
   const { goals } = useGoals(false);
+  const { entries } = useEntries();
+
+  const linkedEntriesByBook = useMemo(() => {
+    const map = new Map<string, Array<{ id: string; title: string; mood: string; createdAt: string; content: string }>>();
+    for (const entry of entries) {
+      if (entry.bookId) {
+        const list = map.get(entry.bookId) || [];
+        list.push(entry);
+        map.set(entry.bookId, list);
+      }
+    }
+    return map;
+  }, [entries]);
 
   const [composerOpen, setComposerOpen] = useState(false);
   const [detail, setDetail] = useState<ReadingBook | null>(null);
@@ -97,6 +111,24 @@ function ReadingContent() {
               </div>
 
               {book.goal && <Badge className="mt-3" color="violet">Supports: {book.goal.title}</Badge>}
+
+              {linkedEntriesByBook.has(book.id) && (
+                <div className="mt-3 rounded-lg border border-emerald-100 bg-emerald-50/60 p-2.5 dark:border-emerald-500/20 dark:bg-emerald-500/5">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                    {linkedEntriesByBook.get(book.id)!.length} linked reflection{linkedEntriesByBook.get(book.id)!.length === 1 ? '' : 's'}
+                  </p>
+                  <ul className="mt-1 space-y-0.5">
+                    {linkedEntriesByBook.get(book.id)!.slice(0, 2).map((e) => (
+                      <li key={e.id} className="truncate text-xs text-slate-600 dark:text-slate-300">
+                        {moodEmoji(e.mood)} {e.title}
+                      </li>
+                    ))}
+                  </ul>
+                  <Link href={`/journal?book=${book.id}`} className="mt-1 block text-[10px] font-bold text-emerald-600 hover:underline dark:text-emerald-400">
+                    View reflections →
+                  </Link>
+                </div>
+              )}
             </Card>
           ))}
         </div>
@@ -126,6 +158,15 @@ function ReadingContent() {
         ))}
       </div>
 
+      {tab === 'library' && books.length === 0 && (
+        <EmptyState
+          emoji="📚"
+          title="Your library is empty."
+          message="Books you finish or add for later will live here, along with the reflections they inspired."
+          action={<Button onClick={() => setComposerOpen(true)}>Add a book</Button>}
+        />
+      )}
+
       {tab === 'library' && books.length > 0 && (
         <div className="space-y-2.5">
           {books.map((book) => (
@@ -143,6 +184,11 @@ function ReadingContent() {
                 <p className="text-xs text-slate-400">
                   {book.author} · page {book.currentPage}/{book.totalPages}
                   {book.completedDate ? ` · finished ${friendlyDate(book.completedDate)}` : ''}
+                  {linkedEntriesByBook.has(book.id) && (
+                    <Link href={`/journal?book=${book.id}`} className="ml-1 font-semibold text-emerald-600 hover:underline dark:text-emerald-400">
+                      · {linkedEntriesByBook.get(book.id)!.length} reflection{linkedEntriesByBook.get(book.id)!.length === 1 ? '' : 's'}
+                    </Link>
+                  )}
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-1.5">
@@ -182,6 +228,7 @@ function ReadingContent() {
         <BookDetailModal
           book={detail}
           goals={goals.filter((g) => !g.isCompleted)}
+          linkedReflections={linkedEntriesByBook.get(detail.id) || []}
           onSave={async (patch) => {
             await updateBook(detail.id, patch);
             setDetail({ ...detail, ...patch } as ReadingBook);
@@ -264,21 +311,24 @@ function BookDetailModal({
   goals,
   onSave,
   onClose,
+  linkedReflections,
 }: {
   book: ReadingBook;
   goals: Array<{ id: string; title: string }>;
   onSave: (patch: Partial<ReadingBook>) => Promise<void>;
   onClose: () => void;
+  linkedReflections?: Array<{ id: string; title: string; mood: string; createdAt: string; content: string }>;
 }) {
   const [notes, setNotes] = useState(book.notes || '');
   const [keyIdeas, setKeyIdeas] = useState(book.keyIdeas || '');
   const [reflection, setReflection] = useState(book.reflection || '');
   const [goalId, setGoalId] = useState(book.goalId || '');
+  const [lifeArea, setLifeArea] = useState(book.lifeArea || '');
   const [busy, setBusy] = useState(false);
 
   const save = async () => {
     setBusy(true);
-    await onSave({ notes, keyIdeas, reflection, goalId: goalId || null });
+    await onSave({ notes, keyIdeas, reflection, goalId: goalId || null, lifeArea: lifeArea || null });
     setBusy(false);
     onClose();
   };
@@ -287,15 +337,38 @@ function BookDetailModal({
     <Modal open onClose={onClose} title={book.title} maxWidth="max-w-lg">
       <p className="mb-4 text-sm text-slate-500">{book.author} · {book.currentPage}/{book.totalPages} pages</p>
       <div className="space-y-4">
-        <Select label="Supports goal" value={goalId} onChange={(e) => setGoalId(e.target.value)}>
-          <option value="">None</option>
-          {goals.map((g) => (
-            <option key={g.id} value={g.id}>{g.title}</option>
-          ))}
-        </Select>
+        <div className="grid grid-cols-2 gap-3">
+          <Select label="Supports goal" value={goalId} onChange={(e) => setGoalId(e.target.value)}>
+            <option value="">None</option>
+            {goals.map((g) => (
+              <option key={g.id} value={g.id}>{g.title}</option>
+            ))}
+          </Select>
+          <Select label="Life area" value={lifeArea} onChange={(e) => setLifeArea(e.target.value)}>
+            <option value="">None</option>
+            {LIFE_AREAS.map((a) => (
+              <option key={a} value={a}>{a}</option>
+            ))}
+          </Select>
+        </div>
         <Textarea label="Key ideas" rows={3} value={keyIdeas} onChange={(e) => setKeyIdeas(e.target.value)} placeholder="What are the main ideas?" />
         <Textarea label="My notes" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes from your reading…" />
         <Textarea label="How is this changing the way I think?" rows={3} value={reflection} onChange={(e) => setReflection(e.target.value)} placeholder="Your personal reflection…" />
+
+        {linkedReflections && linkedReflections.length > 0 && (
+          <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 p-4 dark:border-emerald-500/20 dark:bg-emerald-500/5">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Linked reflections</p>
+            <ul className="mt-2 space-y-2">
+              {linkedReflections.map((e) => (
+                <li key={e.id} className="text-sm text-slate-700 dark:text-slate-200">
+                  {moodEmoji(e.mood)} <span className="font-semibold">{e.title}</span>
+                  <span className="ml-2 text-xs text-slate-400">{friendlyDate(e.createdAt)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         <div className="flex items-center justify-end gap-2 border-t border-slate-100 pt-4 dark:border-slate-800">
           <Button variant="ghost" onClick={onClose}>Close</Button>
           <Button onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save notes'}</Button>

@@ -10,6 +10,7 @@ import { useNotifications } from '@/hooks/useNotifications';
 import { Button, Card, CardHeader, Badge, Switch } from '@/components/ui';
 import { getApiBaseUrl } from '@/lib/api';
 import { loadLocal } from '@/lib/localStore';
+import { exportPDF, exportZip } from '@/lib/export';
 import { JournalEntry, Todo, Goal, ReadingBook } from '@/types';
 
 export default function SettingsPage() {
@@ -19,7 +20,7 @@ export default function SettingsPage() {
   const { goals } = useGoals(false);
   const { books } = useBooks();
 
-  const [exporting, setExporting] = useState<null | 'json' | 'markdown' | 'csv'>(null);
+  const [exporting, setExporting] = useState<null | 'json' | 'markdown' | 'csv' | 'pdf' | 'zip'>(null);
 
   const gather = async (): Promise<{ entries: JournalEntry[]; todos: Todo[]; goals: Goal[]; books: ReadingBook[] }> => {
     if (!token) {
@@ -121,6 +122,20 @@ export default function SettingsPage() {
     setExporting(null);
   };
 
+  const handleExportPdf = async () => {
+    setExporting('pdf');
+    const data = await gather();
+    exportPDF(data.entries, data.todos, data.goals, data.books);
+    setExporting(null);
+  };
+
+  const handleExportZip = async () => {
+    setExporting('zip');
+    const data = await gather();
+    await exportZip(data.entries, data.todos, data.goals, data.books);
+    setExporting(null);
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -175,7 +190,11 @@ export default function SettingsPage() {
 
       {/* Privacy */}
       <Card>
-        <CardHeader title="Privacy & data" subtitle="Plain-language answers about your journal." />
+        <CardHeader
+          title="Privacy & data"
+          subtitle="Plain-language answers about your journal."
+          action={<Link href="/privacy" className="text-xs font-bold text-emerald-600 hover:underline dark:text-emerald-400">Privacy center →</Link>}
+        />
         <div className="space-y-3 p-5">
           <PrivacyRow label="Where is my journal stored?" value={isGuest ? 'Only on this device.' : 'On this device and our encrypted cloud database (PostgreSQL).'} />
           <PrivacyRow label="Cloud sync" value={isGuest ? 'Disabled — you are in local-only mode.' : 'Enabled. Your data stays private to your account.'} />
@@ -196,6 +215,8 @@ export default function SettingsPage() {
           <Button variant="secondary" onClick={exportJson} disabled={!!exporting}>{exporting === 'json' ? 'Exporting…' : 'JSON'}</Button>
           <Button variant="secondary" onClick={exportMarkdown} disabled={!!exporting}>{exporting === 'markdown' ? 'Exporting…' : 'Markdown'}</Button>
           <Button variant="secondary" onClick={exportCsv} disabled={!!exporting}>{exporting === 'csv' ? 'Exporting…' : 'CSV'}</Button>
+          <Button variant="secondary" onClick={handleExportPdf} disabled={!!exporting}>{exporting === 'pdf' ? 'Exporting…' : 'PDF'}</Button>
+          <Button variant="secondary" onClick={handleExportZip} disabled={!!exporting}>{exporting === 'zip' ? 'Exporting…' : 'ZIP bundle'}</Button>
         </div>
         <p className="px-5 pb-5 text-xs text-slate-400">
           Exports include your reflections ({entries.length}), tasks ({todos.length}), goals ({goals.length}), and books ({books.length}).

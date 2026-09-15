@@ -139,7 +139,7 @@ async function sendDailyRhythm(now) {
         await sendToUser(pref.userId, {
           title: 'Evening check-in 🌙',
           body: 'Pause and reflect on your day. What did you learn?',
-          url: '/journal/new?type=reflection',
+          url: '/journal?mode=evening',
         });
         await prisma.notificationPref.update({
           where: { id: pref.id },

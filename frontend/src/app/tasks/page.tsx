@@ -198,6 +198,16 @@ function TasksContent() {
           emoji="☑"
           title="No tasks here yet."
           message={tab === 'today' ? 'Add a small next step. Tiny actions beat big intentions.' : 'All tasks will live here.'}
+          action={
+            <Button
+              onClick={() => {
+                document.getElementById('task-input')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                document.getElementById('task-input')?.focus();
+              }}
+            >
+              Add a task
+            </Button>
+          }
         />
       ) : (
         <div className="space-y-2.5">

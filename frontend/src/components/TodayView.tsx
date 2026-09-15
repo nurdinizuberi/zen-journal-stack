@@ -1,29 +1,40 @@
-// src/components/TodayView.tsx — the calmer, focused home of ZenJournal
+// src/components/TodayView.tsx — the calmer, guided home of ZenJournal
+// Leads with the daily ritual (intention → focus → reflection), then the overview.
 // Shared by the dashboard (/) and the /today deep link for morning reminders.
 
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '@/context/AppContext';
 import { useEntries, useTodos, useGoals, useBooks, useIntention } from '@/hooks/useData';
-import { Card, Button, Badge, EmptyState, ProgressBar, Stat, TagChip } from '@/components/ui';
-import { MOODS, moodEmoji, timeAgo, friendlyDate, hourGreeting } from '@/lib/constants';
-import { computeStreak } from '@/lib/time';
+import { useHabits } from '@/hooks/useHabits';
+import { Card, Button, Badge, EmptyState, ProgressBar, TagChip } from '@/components/ui';
+import { moodEmoji, timeAgo, friendlyDate, hourGreeting } from '@/lib/constants';
+import { computeStreak, isSameDay } from '@/lib/time';
+import RitualFlow from '@/components/RitualFlow';
 import { useRouter } from 'next/navigation';
 
 export default function TodayView() {
   const { userName, isGuest, setShowAuthModal } = useApp();
   const router = useRouter();
   const { entries, addEntry } = useEntries();
-  const { todos } = useTodos();
+  const { todos, toggleTodo, addTodo } = useTodos();
   const { goals } = useGoals(false);
   const { books } = useBooks();
   const { intention, saveIntention } = useIntention();
+  const { habits } = useHabits();
 
   const [intentionText, setIntentionText] = useState(intention?.intention || '');
   const [desiredState, setDesiredState] = useState(intention?.desiredState || '');
-  const [moodSaved, setMoodSaved] = useState(false);
+
+  // When the intention loads (async from API), reflect it in the editor.
+  useEffect(() => {
+    if (intention) {
+      setIntentionText(intention.intention || '');
+      setDesiredState(intention.desiredState || '');
+    }
+  }, [intention]);
 
   const { greeting, question } = hourGreeting();
 
@@ -42,28 +53,41 @@ export default function TodayView() {
   const activeGoals = goals.filter((g) => !g.isCompleted).length;
   const completedGoals = goals.filter((g) => g.isCompleted).length;
   const activeBooks = books.filter((b) => !b.completed).length;
+
+  const habitsDoneToday = useMemo(() => {
+    const now = new Date();
+    const todayKey = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+    return habits.filter((h) => (h.logs || []).some((l) => {
+      const d = new Date(l.completedAt);
+      return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}` === todayKey;
+    })).length;
+  }, [habits]);
   const recentEntry = entries[0];
 
-  const todayJournaled = entries.length > 0 && new Date(entries[0].createdAt).toDateString() === new Date().toDateString();
+  // A real reflection has substance — mood check-ins (empty content) don't count.
+  const reflectedToday = entries.some((e) => isSameDay(e.createdAt) && (e.content || '').trim().length > 0);
 
-  const saveTodayIntention = () => {
+  const goalsBeingWorked = useMemo(() => {
+    const openGoalIds = new Set(todos.filter((t) => !t.isCompleted && t.goalId).map((t) => t.goalId));
+    return goals.filter((g) => openGoalIds.has(g.id));
+  }, [todos, goals]);
+
+  const saveTodayIntention = async () => {
     if (!intentionText.trim()) return;
-    saveIntention({ intention: intentionText.trim(), desiredState: desiredState || undefined });
+    await saveIntention({ intention: intentionText.trim(), desiredState: desiredState || undefined });
   };
 
-  const recordMood = async (mood: string) => {
+  const saveReflection = async (input: { title: string; content: string; mood: string }) => {
     await addEntry({
-      title: `Mood check-in — ${mood}`,
-      content: '',
-      mood,
+      title: input.title || 'Reflection',
+      content: input.content,
+      mood: input.mood || 'Reflective',
     });
-    setMoodSaved(true);
-    setTimeout(() => setMoodSaved(false), 2000);
   };
 
   const journalStatusText = entries.length === 0
     ? 'Write your first reflection'
-    : todayJournaled
+    : reflectedToday
       ? 'Journaled today ✓'
       : timeAgo(entries[0].createdAt);
 
@@ -78,70 +102,23 @@ export default function TodayView() {
           {userName ? userName.split(' ')[0] : 'Welcome'}.
         </h1>
         <p className="mt-1 text-slate-500 dark:text-slate-400">{question}</p>
-
-        {/* Quick mood */}
-        <div className="mt-4 flex flex-wrap items-center gap-1.5" aria-label="Record your mood">
-          {MOODS.map((mood) => (
-            <button
-              key={mood.label}
-              onClick={() => recordMood(mood.label)}
-              title={mood.label}
-              className="rounded-full border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-500 transition hover:scale-105 hover:border-emerald-400 hover:text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:text-white"
-            >
-              {mood.emoji} {mood.label}
-            </button>
-          ))}
-          {moodSaved && (
-            <span className="ml-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">Recorded ✓</span>
-          )}
-        </div>
       </section>
 
-      {/* Today's Intention */}
-      <Card className="p-5 sm:p-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="lg:flex-1">
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-amber-600 dark:text-amber-400">Today&apos;s Intention</p>
-            <input
-              value={intentionText}
-              onChange={(e) => setIntentionText(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && saveTodayIntention()}
-              placeholder="What would make today meaningful?"
-              className="mt-3 w-full border-b-2 border-slate-100 bg-transparent pb-2 text-lg font-semibold text-slate-900 outline-none transition focus:border-emerald-500 dark:border-slate-800 dark:text-slate-100"
-              aria-label="Today&apos;s intention"
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <select
-              value={desiredState}
-              onChange={(e) => setDesiredState(e.target.value)}
-              aria-label="Desired emotional state"
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 outline-none focus:border-emerald-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
-            >
-              <option value="">Desired state…</option>
-              {['Calm', 'Focused', 'Grateful', 'Courageous', 'Energized', 'Patient'].map((s) => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
-            <Button onClick={saveTodayIntention} disabled={!intentionText.trim()}>
-              Save intention
-            </Button>
-          </div>
-        </div>
-        {intention && (
-          <p className="mt-3 text-xs text-slate-400">
-            {friendlyDate(new Date().toISOString())} intention
-            {intention.desiredState ? ` · feeling ${intention.desiredState}` : ''}
-          </p>
-        )}
-      </Card>
-
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <Stat label="Reflections" value={entries.length} icon="✎" />
-        <Stat label="Current streak" value={`${streak}d`} icon="🌱" accentClass="text-emerald-600 dark:text-emerald-400" />
-        <Stat label="This week" value={thisWeekCount} icon="◔" />
-        <Stat label="This month" value={thisMonthCount} icon="◉" />
-      </div>
+      {/* The guided ritual */}
+      <RitualFlow
+        intention={intention}
+        intentionText={intentionText}
+        setIntentionText={setIntentionText}
+        desiredState={desiredState}
+        setDesiredState={setDesiredState}
+        onSaveIntention={saveTodayIntention}
+        todos={todos}
+        onToggleTodo={toggleTodo}
+        onAddTodo={(task) => addTodo({ task, priority: 'medium' })}
+        goals={goals}
+        entries={entries}
+        onSaveReflection={saveReflection}
+      />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Today's progress */}
@@ -150,10 +127,30 @@ export default function TodayView() {
           <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">A quiet snapshot of your momentum.</p>
           <dl className="space-y-3 text-sm">
             <ProgressRow label="Tasks" value={`${completedTasks} done · ${remainingTasks} remaining`} fraction={todos.length ? completedTasks / todos.length : 0} />
-            <ProgressRow label="Goals" value={`${activeGoals} active · ${completedGoals} completed`} fraction={goals.length ? completedGoals / goals.length : 0} />
-            <ProgressRow label="Journal" value={journalStatusText} fraction={todayJournaled ? 1 : entries.length ? 0.5 : 0} />
-            <ProgressRow label="Reading" value={`${activeBooks} in progress`} fraction={0} />
+            <ProgressRow label="Habits" value={habits.length > 0 ? `${habitsDoneToday} set · ${habits.length} total` : 'No habits yet'} fraction={habits.length ? habitsDoneToday / habits.length : 0} />
+            <ProgressRow label="Journal" value={journalStatusText} fraction={reflectedToday ? 1 : entries.length ? 0.5 : 0} />
           </dl>
+          {goalsBeingWorked.length > 0 && (
+            <div className="mt-4 rounded-xl border border-violet-100 bg-violet-50/60 p-3 dark:border-violet-500/20 dark:bg-violet-500/5">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-violet-600 dark:text-violet-400">
+                What your tasks serve
+              </p>
+              <div className="mt-2 space-y-1.5">
+                {goalsBeingWorked.map((g) => (
+                  <Link
+                    key={g.id}
+                    href="/goals"
+                    className="flex items-center justify-between gap-2 text-xs text-slate-600 hover:text-violet-700 dark:text-slate-300 dark:hover:text-violet-300"
+                  >
+                    <span className="truncate">◎ {g.title}</span>
+                    <span className="shrink-0 font-bold text-violet-600 dark:text-violet-400">
+                      {todos.filter((t) => t.goalId === g.id && !t.isCompleted).length} open
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
         </Card>
 
         {/* Streak + week */}
@@ -220,14 +217,12 @@ export default function TodayView() {
       </div>
 
       {/* Tags quick links */}
-      {(entries.length > 5 || true) && (
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Jump to:</span>
-          <Link href="/journal"><TagChip label="All reflections" /></Link>
-          <Link href="/journal?fav=1"><TagChip label="★ Important" /></Link>
-          <Link href="/journal?search=1"><TagChip label="Search" /></Link>
-        </div>
-      )}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Jump to:</span>
+        <Link href="/journal"><TagChip label="All reflections" /></Link>
+        <Link href="/journal?fav=1"><TagChip label="★ Important" /></Link>
+        <Link href="/journal?search=1"><TagChip label="Search" /></Link>
+      </div>
     </div>
   );
 }

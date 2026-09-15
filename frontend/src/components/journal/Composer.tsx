@@ -5,7 +5,7 @@
 import { useState } from 'react';
 import { Button, Input, Textarea, Select, TagChip } from '@/components/ui';
 import { MOODS, LIFE_AREAS, DEFAULT_TAGS } from '@/lib/constants';
-import { JournalEntry, Todo, Goal } from '@/types';
+import { JournalEntry, Todo, Goal, ReadingBook } from '@/types';
 
 type Mode = 'free' | 'daily' | 'evening';
 
@@ -26,6 +26,7 @@ interface ComposerProps {
   entries: JournalEntry[];
   todos: Todo[];
   goals: Goal[];
+  books?: ReadingBook[];
   onSave: (input: {
     title: string;
     content: string;
@@ -34,6 +35,7 @@ interface ComposerProps {
     lifeArea: string | null;
     goalId?: string | null;
     todoId?: string | null;
+    bookId?: string | null;
     createdAt?: string;
   }) => Promise<void>;
   autoOpen?: boolean;
@@ -41,7 +43,7 @@ interface ComposerProps {
   onClose?: () => void;
 }
 
-export default function Composer({ entries, todos, goals, onSave, autoOpen, initialMode, onClose }: ComposerProps) {
+export default function Composer({ entries, todos, goals, books = [], onSave, autoOpen, initialMode, onClose }: ComposerProps) {
   const [open, setOpen] = useState(!!autoOpen);
   const [mode, setMode] = useState<Mode>(initialMode || 'free');
   const [title, setTitle] = useState('');
@@ -51,6 +53,7 @@ export default function Composer({ entries, todos, goals, onSave, autoOpen, init
   const [lifeArea, setLifeArea] = useState('');
   const [goalId, setGoalId] = useState('');
   const [todoId, setTodoId] = useState('');
+  const [bookId, setBookId] = useState('');
   const [date, setDate] = useState('');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -83,6 +86,7 @@ export default function Composer({ entries, todos, goals, onSave, autoOpen, init
       lifeArea: lifeArea || null,
       goalId: goalId || null,
       todoId: todoId || null,
+      bookId: bookId || null,
       createdAt: date ? new Date(date).toISOString() : undefined,
     });
     setSaving(false);
@@ -108,6 +112,7 @@ export default function Composer({ entries, todos, goals, onSave, autoOpen, init
           setLifeArea('');
           setGoalId('');
           setTodoId('');
+          setBookId('');
           setDate('');
           setMode('free');
         }}
@@ -192,7 +197,7 @@ export default function Composer({ entries, todos, goals, onSave, autoOpen, init
           <CustomTagInput onAdd={addCustomTag} />
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
           <Select label="Life area" value={lifeArea} onChange={(e) => setLifeArea(e.target.value)}>
             <option value="">No area</option>
             {LIFE_AREAS.map((area) => (
@@ -211,6 +216,14 @@ export default function Composer({ entries, todos, goals, onSave, autoOpen, init
               <option key={t.id} value={t.id}>{t.task}</option>
             ))}
           </Select>
+          {books.length > 0 && (
+            <Select label="Link a book" value={bookId} onChange={(e) => setBookId(e.target.value)}>
+              <option value="">None</option>
+              {books.filter((b) => !b.completed).map((b) => (
+                <option key={b.id} value={b.id}>{b.title}</option>
+              ))}
+            </Select>
+          )}
         </div>
 
         <Input

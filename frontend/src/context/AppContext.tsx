@@ -163,12 +163,14 @@ function syncGuestData(newToken: string) {
   const goals = load<Array<{ title: string; timeframe: string }>>('zen_goals', []);
   const habits = load<Array<{ name: string; description: string | null }>>('zen_habits', []);
   const books = load<Array<{ title: string; author: string; totalPages: number; currentPage: number; notes: string }>>('zen_books', []);
+  const intentions = load<Array<{ date: string; intention: string; priority?: string | null; desiredState?: string | null }>>('zen_intentions', []);
 
   for (const entry of entries) post('/entries', entry);
   for (const todo of todos) post('/todos', todo);
   for (const goal of goals) post('/goals', goal);
   for (const habit of habits) post('/habits', habit);
   for (const book of books) post('/reading', book);
+  for (const intentionRecord of intentions) post('/intentions', intentionRecord);
 
-  ['zen_entries', 'zen_todos', 'zen_goals', 'zen_habits', 'zen_books'].forEach((k) => localStorage.removeItem(k));
+  ['zen_entries', 'zen_todos', 'zen_goals', 'zen_habits', 'zen_books', 'zen_intentions'].forEach((k) => localStorage.removeItem(k));
 }

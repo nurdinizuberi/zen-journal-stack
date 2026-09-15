@@ -19,8 +19,11 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/journal', label: 'Journal', icon: '✎' },
   { href: '/goals', label: 'Goals', icon: '◎' },
   { href: '/tasks', label: 'Tasks', icon: '☑' },
+  { href: '/habits', label: 'Habits', icon: '⚡' },
   { href: '/reading', label: 'Reading', icon: '📖' },
+  { href: '/areas', label: 'Areas', icon: '◌' },
   { href: '/insights', label: 'Insights', icon: '◔' },
+  { href: '/analytics', label: 'Analytics', icon: '▦' },
 ];
 
 interface BeforeInstallPromptEvent extends Event {
@@ -34,6 +37,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const { userName, isGuest, toggleDark, setShowAuthModal, signOut } = useApp();
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [newMenuOpen, setNewMenuOpen] = useState(false);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
 
   React.useEffect(() => {
     const handler = (e: Event) => {
@@ -58,6 +62,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     setNewMenuOpen(false);
     router.push(href);
   };
+
+  const openMore = (href: string) => {
+    setMoreMenuOpen(false);
+    router.push(href);
+  };
+
+  const moreActive =
+    isActive('/habits') || isActive('/reading') || isActive('/areas') || isActive('/insights') || isActive('/analytics') || isActive('/settings');
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
@@ -197,7 +209,17 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </button>
 
           <MobileTab href="/tasks" label="Tasks" icon="☑" active={isActive('/tasks')} />
-          <MobileTab href="/settings" label="Me" icon="⚙" active={isActive('/settings')} />
+
+          <button
+            onClick={() => setMoreMenuOpen(true)}
+            aria-label="More"
+            className={`flex flex-col items-center gap-0.5 px-3 py-1.5 text-[11px] font-semibold transition ${
+              moreActive ? 'text-slate-900 dark:text-white' : 'text-slate-400'
+            }`}
+          >
+            <span className="text-lg leading-none" aria-hidden>☰</span>
+            More
+          </button>
         </div>
       </nav>
 
@@ -215,6 +237,27 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <NewAction emoji="✓" label="Task" onClick={() => openNew('/tasks?add=1')} />
             <NewAction emoji="🎯" label="Goal" onClick={() => openNew('/goals?add=1')} />
             <NewAction emoji="📚" label="Reading Note" onClick={() => openNew('/reading?add=1')} />
+          </div>
+        </div>
+      )}
+
+      {/* More menu (mobile) */}
+      {moreMenuOpen && (
+        <div className="fixed inset-0 z-50 md:hidden" onClick={() => setMoreMenuOpen(false)}>
+          <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" />
+          <div
+            className="absolute bottom-20 left-1/2 w-full max-w-xs -translate-x-1/2 rounded-2xl border border-slate-100 bg-white p-3 shadow-2xl dark:border-slate-800 dark:bg-slate-900"
+            onClick={(e) => e.stopPropagation()}
+            role="menu"
+          >
+            <p className="px-3 pb-2 pt-1 text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">More</p>
+            <NewAction emoji="◈" label="Today" onClick={() => openMore('/')} />
+            <NewAction emoji="📖" label="Reading" onClick={() => openMore('/reading')} />
+            <NewAction emoji="⚡" label="Habits" onClick={() => openMore('/habits')} />
+            <NewAction emoji="◔" label="Insights" onClick={() => openMore('/insights')} />
+            <NewAction emoji="▦" label="Analytics" onClick={() => openMore('/analytics')} />
+            <NewAction emoji="◌" label="Life areas" onClick={() => openMore('/areas')} />
+            <NewAction emoji="⚙" label="Settings" onClick={() => openMore('/settings')} />
           </div>
         </div>
       )}

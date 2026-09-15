@@ -13,6 +13,12 @@ export interface JournalEntry {
   isFavorite: boolean;
   voiceTranscript?: string;
   attachments?: Array<{ url: string; name: string; fileType: string }>;
+  goalId?: string | null;
+  goal?: { id: string; title: string } | null;
+  todoId?: string | null;
+  todo?: { id: string; task: string } | null;
+  bookId?: string | null;
+  book?: { id: string; title: string; author: string } | null;
 }
 
 export type Priority = 'high' | 'medium' | 'low';
@@ -72,6 +78,7 @@ export interface Goal {
   createdAt: string;
   todos?: Array<{ id: string; task: string; isCompleted: boolean }>;
   books?: Array<{ id: string; title: string; status: string }>;
+  entries?: Array<{ id: string; title: string; mood: string; createdAt: string; content: string }>;
 }
 
 export interface ReadingBook {
@@ -115,6 +122,42 @@ export interface Habit {
   logs: HabitLog[];
 }
 
+export interface InsightObservation {
+  icon: string;
+  title: string;
+  message: string;
+  tone: 'positive' | 'gentle' | 'neutral';
+}
+
+export interface DayOfWeekStat {
+  label: string;
+  count: number;
+}
+
+export interface HourBucketStat {
+  label: string;
+  count: number;
+}
+
+export interface IntentionComparison {
+  ready: boolean;
+  intentionDays: number;
+  otherDays: number;
+  avgWordsWith: number;
+  avgWordsWithout: number;
+  dominantMoodWith: string;
+  dominantMoodWithout: string;
+  taskCompletionWith: number;
+  taskCompletionWithout: number;
+}
+
+export interface ThemeMood {
+  theme: string;
+  count: number;
+  mood: string;
+  moodShare: number;
+}
+
 export interface InsightData {
   totals: {
     reflections: number;
@@ -129,8 +172,15 @@ export interface InsightData {
   moodDistribution: Record<string, number>;
   moodByWeek: Record<string, number>;
   moodByMonth: Record<string, number>;
+  moodDeltas: Record<string, number>;
   topics: Record<string, number>;
   booksReading: number;
+  observations: InsightObservation[];
+  longestStreak: number;
+  dayOfWeek: DayOfWeekStat[];
+  hourBuckets: HourBucketStat[];
+  intentionComparison: IntentionComparison;
+  themeMoods: ThemeMood[];
 }
 
 export interface AnalyticsData {

@@ -3,10 +3,11 @@
 'use client';
 
 import { Suspense, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useGoals, useTodos } from '@/hooks/useData';
 import { Button, Card, EmptyState, Input, Textarea, Select, Badge, ProgressBar, Modal } from '@/components/ui';
-import { LIFE_AREAS, GOAL_TIMEFRAMES, friendlyDate, timeAgo } from '@/lib/constants';
+import { LIFE_AREAS, GOAL_TIMEFRAMES, friendlyDate, timeAgo, moodEmoji } from '@/lib/constants';
 import { Goal, GoalMilestone, Todo } from '@/types';
 
 export default function GoalsPage() {
@@ -131,8 +132,9 @@ function GoalCard({
   onUpdateProgress: (progress: number) => void;
 }) {
   const connectedTasks = todos.filter((t) => t.goalId === goal.id);
-  const completedConnected = connectedTasks.filter((t) => t.isCompleted).length;
   const milestones = Array.isArray(goal.milestones) ? goal.milestones : [];
+  const linkedBooks = Array.isArray(goal.books) ? goal.books : [];
+  const linkedEntries = Array.isArray(goal.entries) ? goal.entries : [];
 
   return (
     <Card className="flex flex-col p-5 transition hover:shadow-md">
@@ -198,10 +200,67 @@ function GoalCard({
       {connectedTasks.length > 0 && (
         <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-800">
           <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Connected tasks</p>
-          <p className="text-xs text-slate-600 dark:text-slate-300">
-            {completedConnected}/{connectedTasks.length} completed
-          </p>
+          <ul className="mt-1 space-y-0.5">
+            {connectedTasks.slice(0, 3).map((t) => (
+              <li key={t.id} className="flex items-center gap-1.5 text-xs">
+                <span className={t.isCompleted ? 'text-emerald-500' : 'text-slate-300'}>{t.isCompleted ? '✓' : '○'}</span>
+                <span className={t.isCompleted ? 'line-through text-slate-400' : 'text-slate-600 dark:text-slate-300'}>{t.task}</span>
+              </li>
+            ))}
+            {connectedTasks.length > 3 && (
+              <li className="text-[10px] text-slate-400">+{connectedTasks.length - 3} more</li>
+            )}
+          </ul>
+          <Link href="/tasks" className="mt-1 block text-[10px] font-bold text-violet-600 hover:underline dark:text-violet-400">
+            View all tasks →
+          </Link>
         </div>
+      )}
+
+      {/* Linked journal entries */}
+      {linkedEntries.length > 0 && (
+        <div className="mt-3 rounded-lg border border-emerald-100 bg-emerald-50/60 px-3 py-2 dark:border-emerald-500/20 dark:bg-emerald-500/5">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Linked reflections</p>
+          <ul className="mt-1 space-y-0.5">
+            {linkedEntries.slice(0, 3).map((e) => (
+              <li key={e.id} className="truncate text-xs text-slate-600 dark:text-slate-300">
+                {moodEmoji(e.mood)} {e.title}
+              </li>
+            ))}
+            {linkedEntries.length > 3 && (
+              <li className="text-[10px] text-slate-400">+{linkedEntries.length - 3} more</li>
+            )}
+          </ul>
+          <Link href={`/journal?goal=${goal.id}`} className="mt-1 block text-[10px] font-bold text-emerald-600 hover:underline dark:text-emerald-400">
+            View reflections →
+          </Link>
+        </div>
+      )}
+
+      {/* Connected books */}
+      {linkedBooks.length > 0 && (
+        <div className="mt-3 rounded-lg border border-amber-100 bg-amber-50/60 px-3 py-2 dark:border-amber-500/20 dark:bg-amber-500/5">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">Feeds this goal</p>
+          <ul className="mt-1 space-y-0.5">
+            {linkedBooks.slice(0, 3).map((b) => (
+              <li key={b.id} className="truncate text-xs text-slate-600 dark:text-slate-300">
+                📖 {b.title}
+              </li>
+            ))}
+            {linkedBooks.length > 3 && (
+              <li className="text-[10px] text-slate-400">+{linkedBooks.length - 3} more</li>
+            )}
+          </ul>
+          <Link href="/reading" className="mt-1 block text-[10px] font-bold text-amber-600 hover:underline dark:text-amber-400">
+            View reading →
+          </Link>
+        </div>
+      )}
+
+      {(connectedTasks.length === 0 && linkedEntries.length === 0 && linkedBooks.length === 0) && (
+        <Link href="/tasks" className="mt-3 block rounded-lg border border-dashed border-slate-200 px-3 py-2 text-center text-xs font-semibold text-slate-400 transition hover:border-emerald-300 hover:text-emerald-600 dark:border-slate-700 dark:hover:border-emerald-500/40 dark:hover:text-emerald-400">
+          + Connect tasks, reading, or reflections
+        </Link>
       )}
 
       <div className="mt-auto pt-3 flex items-center justify-between">

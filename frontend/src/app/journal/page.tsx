@@ -3,13 +3,13 @@
 'use client';
 
 import { Suspense, useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
-import { useEntries, useTodos, useGoals } from '@/hooks/useData';
+import { useSearchParams, useRouter } from 'next/navigation';
+import { useEntries, useTodos, useGoals, useBooks } from '@/hooks/useData';
 import Composer from '@/components/journal/Composer';
 import EntryCard from '@/components/journal/EntryCard';
 import { Button, Card, EmptyState, Input, Select, Badge, Modal } from '@/components/ui';
 import { MOODS, LIFE_AREAS, moodEmoji } from '@/lib/constants';
-import { JournalEntry } from '@/types';
+import { JournalEntry, Todo, Goal, ReadingBook } from '@/types';
 import { timeAgo } from '@/lib/constants';
 
 export default function JournalPage() {
@@ -22,6 +22,7 @@ export default function JournalPage() {
 
 function JournalContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const modeParam = searchParams.get('mode');
   const autoWrite = modeParam === 'write';
   const autoEvening = modeParam === 'evening' || searchParams.get('type') === 'reflection';
@@ -29,21 +30,30 @@ function JournalContent() {
   const autoOpen = autoWrite || autoDaily || autoEvening;
   const initialMode = autoEvening ? 'evening' : autoDaily ? 'daily' : autoWrite ? 'free' : undefined;
   const favOnly = searchParams.get('fav') === '1';
+  const goalParam = searchParams.get('goal') || '';
+  const bookParam = searchParams.get('book') || '';
+  const lifeParam = searchParams.get('life') || '';
 
   const { entries, addEntry, updateEntry, deleteEntry } = useEntries();
   const { todos } = useTodos();
   const { goals } = useGoals(false);
+  const { books } = useBooks();
 
   const [query, setQuery] = useState('');
   const [moodFilter, setMoodFilter] = useState('');
-  const [lifeFilter, setLifeFilter] = useState('');
+  const [lifeFilter, setLifeFilter] = useState(lifeParam);
   const [tagFilter, setTagFilter] = useState('');
+  const [goalFilter, setGoalFilter] = useState(goalParam);
+  const [bookFilter, setBookFilter] = useState(bookParam);
   const [favoritesOnly, setFavoritesOnly] = useState(favOnly);
   const [editing, setEditing] = useState<JournalEntry | null>(null);
 
   useEffect(() => {
     setFavoritesOnly(favOnly);
-  }, [favOnly]);
+    setGoalFilter(goalParam);
+    setBookFilter(bookParam);
+    setLifeFilter(lifeParam);
+  }, [favOnly, goalParam, bookParam, lifeParam]);
 
   // On This Day — entries from previous years on today's month/day
   const onThisDay = useMemo(() => {
@@ -69,19 +79,30 @@ function JournalContent() {
       if (moodFilter && e.mood !== moodFilter) return false;
       if (lifeFilter && e.lifeArea !== lifeFilter) return false;
       if (tagFilter && !(e.tags || []).includes(tagFilter)) return false;
+      if (goalFilter && e.goalId !== goalFilter) return false;
+      if (bookFilter && e.bookId !== bookFilter) return false;
       if (q) {
         const haystack = `${e.title} ${e.content} ${(e.tags || []).join(' ')} ${e.lifeArea || ''} ${e.mood}`.toLowerCase();
         if (!haystack.includes(q)) return false;
       }
       return true;
     });
-  }, [entries, query, moodFilter, lifeFilter, tagFilter, favoritesOnly]);
+  }, [entries, query, moodFilter, lifeFilter, tagFilter, goalFilter, bookFilter, favoritesOnly]);
 
   const save = async (input: Parameters<typeof addEntry>[0]) => {
     await addEntry(input);
   };
 
   const updateAllTags = () => {};
+
+  const clearFilters = () => {
+    setQuery('');
+    setMoodFilter('');
+    setLifeFilter('');
+    setTagFilter('');
+    setGoalFilter('');
+    setBookFilter('');
+  };
 
   return (
     <div className="space-y-6">
@@ -95,6 +116,7 @@ function JournalContent() {
         entries={entries}
         todos={todos}
         goals={goals}
+        books={books}
         onSave={save}
         autoOpen={autoOpen}
         initialMode={initialMode}
@@ -135,6 +157,12 @@ function JournalContent() {
           <h2 className="text-xl font-black tracking-tight text-slate-900 dark:text-white">My Journey</h2>
           <p className="text-sm text-slate-500 dark:text-slate-400">
             {filtered.length} {filtered.length === 1 ? 'reflection' : 'reflections'}
+            {goalFilter && goals.find((g) => g.id === goalFilter) && (
+              <> · for <span className="font-semibold text-violet-500 dark:text-violet-400">{goals.find((g) => g.id === goalFilter)!.title}</span></>
+            )}
+            {bookFilter && books.find((b) => b.id === bookFilter) && (
+              <> · in <span className="font-semibold text-amber-500 dark:text-amber-400">{books.find((b) => b.id === bookFilter)!.title}</span></>
+            )}
             {favoritesOnly && ' · important only'}
           </p>
         </div>
@@ -158,7 +186,7 @@ function JournalContent() {
       </div>
 
       {/* Filters */}
-      {(moodFilter || lifeFilter || tagFilter || query) && (
+      {(moodFilter || lifeFilter || tagFilter || goalFilter || bookFilter || query) && (
         <div className="flex flex-wrap items-center gap-2">
           <Select value={moodFilter} onChange={(e) => setMoodFilter(e.target.value)} className="w-auto">
             <option value="">All moods</option>
@@ -172,13 +200,25 @@ function JournalContent() {
               <option key={a} value={a}>{a}</option>
             ))}
           </Select>
+          <Select value={goalFilter} onChange={(e) => setGoalFilter(e.target.value)} className="w-auto">
+            <option value="">All goals</option>
+            {goals.filter((g) => entries.some((e) => e.goalId === g.id)).map((g) => (
+              <option key={g.id} value={g.id}>◎ {g.title}</option>
+            ))}
+          </Select>
+          <Select value={bookFilter} onChange={(e) => setBookFilter(e.target.value)} className="w-auto">
+            <option value="">All books</option>
+            {books.filter((b) => entries.some((e) => e.bookId === b.id)).map((b) => (
+              <option key={b.id} value={b.id}>📖 {b.title}</option>
+            ))}
+          </Select>
           <Select value={tagFilter} onChange={(e) => setTagFilter(e.target.value)} className="w-auto">
             <option value="">All tags</option>
             {allTags.map((t) => (
               <option key={t} value={t}>{t}</option>
             ))}
           </Select>
-          <Button variant="ghost" size="sm" onClick={() => { setQuery(''); setMoodFilter(''); setLifeFilter(''); setTagFilter(''); }}>
+          <Button variant="ghost" size="sm" onClick={clearFilters}>
             Clear
           </Button>
         </div>
@@ -188,9 +228,19 @@ function JournalContent() {
       {filtered.length === 0 ? (
         <EmptyState
           emoji="✎"
-          title="Your journey starts here."
-          message="Write your first reflection and begin building your personal timeline. Search and filters are applied when you have something to look back on."
-          action={<></>}
+          title={entries.length === 0 ? 'Your journey starts here.' : 'Nothing matches right now.'}
+          message={
+            entries.length === 0
+              ? 'Write your first reflection and begin building your personal timeline.'
+              : 'No reflections match the current filters. Clear them to see your journal.'
+          }
+          action={
+            entries.length === 0 ? (
+              <Button onClick={() => router.push('/journal?mode=write')}>Write your first reflection</Button>
+            ) : (
+              <Button variant="secondary" onClick={clearFilters}>Clear filters</Button>
+            )
+          }
         />
       ) : (
         <div className="space-y-4">
@@ -208,10 +258,17 @@ function JournalContent() {
 
       {/* Edit modal */}
       {editing && (
-        <EditModal entry={editing} onClose={() => setEditing(null)} onSave={async (patch) => {
-          await updateEntry(editing.id, patch);
-          setEditing(null);
-        }} />
+        <EditModal
+          entry={editing}
+          todos={todos}
+          goals={goals}
+          books={books}
+          onClose={() => setEditing(null)}
+          onSave={async (patch) => {
+            await updateEntry(editing.id, patch);
+            setEditing(null);
+          }}
+        />
       )}
     </div>
   );
@@ -233,10 +290,16 @@ function PageIntro({ count, onThisDay, recent }: { count: number; onThisDay: num
 
 function EditModal({
   entry,
+  todos,
+  goals,
+  books,
   onClose,
   onSave,
 }: {
   entry: JournalEntry;
+  todos: Todo[];
+  goals: Goal[];
+  books: ReadingBook[];
   onClose: () => void;
   onSave: (patch: Partial<JournalEntry>) => Promise<void>;
 }) {
@@ -244,7 +307,13 @@ function EditModal({
   const [content, setContent] = useState(entry.content || '');
   const [mood, setMood] = useState(entry.mood || '');
   const [lifeArea, setLifeArea] = useState(entry.lifeArea || '');
+  const [goalId, setGoalId] = useState(entry.goalId || '');
+  const [todoId, setTodoId] = useState(entry.todoId || '');
+  const [bookId, setBookId] = useState(entry.bookId || '');
   const [busy, setBusy] = useState(false);
+
+  const incompleteTodos = todos.filter((t) => !t.isCompleted);
+  const activeGoals = goals.filter((g) => !g.isCompleted);
 
   return (
     <Modal open onClose={onClose} title="Edit reflection" maxWidth="max-w-lg">
@@ -261,6 +330,26 @@ function EditModal({
             <option value="">None</option>
             {LIFE_AREAS.map((a) => (
               <option key={a} value={a}>{a}</option>
+            ))}
+          </Select>
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <Select label="Goal" value={goalId} onChange={(e) => setGoalId(e.target.value)}>
+            <option value="">None</option>
+            {activeGoals.map((g) => (
+              <option key={g.id} value={g.id}>{g.title}</option>
+            ))}
+          </Select>
+          <Select label="Task" value={todoId} onChange={(e) => setTodoId(e.target.value)}>
+            <option value="">None</option>
+            {incompleteTodos.map((t) => (
+              <option key={t.id} value={t.id}>{t.task}</option>
+            ))}
+          </Select>
+          <Select label="Book" value={bookId} onChange={(e) => setBookId(e.target.value)}>
+            <option value="">None</option>
+            {books.filter((b) => !b.completed).map((b) => (
+              <option key={b.id} value={b.id}>{b.title}</option>
             ))}
           </Select>
         </div>
@@ -284,6 +373,9 @@ function EditModal({
                 content: content.trim(),
                 mood: mood || entry.mood,
                 lifeArea: lifeArea || null,
+                goalId: goalId || null,
+                todoId: todoId || null,
+                bookId: bookId || null,
               });
             }}
           >
